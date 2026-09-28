@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "VibeNewz",
+    "slug": "vibenewz-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F2EB"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "backgroundColor": "#F5F2EB"
+    }
+  }
+}
