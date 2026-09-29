@@ -1,94 +1,79 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
-  Text,
-  FlatList,
+  Pressable,
   StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
+  useWindowDimensions,
 } from "react-native";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
-import {
-  NewsArticle,
-  Sentiment,
-  getUserFeed,
-  getUserFeedBySentiment,
-  fetchLiveNews,
-} from "../api";
+import { useWellbeing } from "../context/WellbeingContext";
+import { NewsArticle, getUserFeed, fetchLiveNews } from "../api";
+import { PageShell } from "../components/PageShell";
 import { ArticleCard } from "../components/ArticleCard";
-import { colors } from "../theme";
+import { StoryImage } from "../components/StoryImage";
+import { VibeCard } from "../components/VibeSlider";
+import {
+  MoodCheckInCard,
+  ReadingBalanceCard,
+} from "../components/WellbeingCards";
+import { Sans, Serif, Eyebrow } from "../components/Typography";
+import { colors, radius, shadows } from "../theme";
+import { greetingForNow, mixByVibe } from "../utils/news";
 
-type FilterOption = "ALL" | Sentiment;
-
-const FILTERS: { key: FilterOption; label: string }[] = [
-  { key: "ALL", label: "All" },
-  { key: "POSITIVE", label: "Positive" },
-  { key: "NEUTRAL", label: "Neutral" },
-  { key: "NEGATIVE", label: "Negative" },
-];
+const PAGE_SIZE = 6;
 
 export function DashboardScreen({ navigation }: any) {
-  const { username } = useAuth();
+  const { username, user } = useAuth();
+  const { upliftingShare } = useWellbeing();
+  const { width } = useWindowDimensions();
+
   const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [filter, setFilter] = useState<FilterOption>("ALL");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [hasAutoFetched, setHasAutoFetched] = useState(false);
+  const [category, setCategory] = useState("For you");
+  const [showAll, setShowAll] = useState(false);
+  const [gridWidth, setGridWidth] = useState(0);
 
-  const loadFeed = useCallback(
-    async (selectedFilter: FilterOption) => {
-      if (!username) return [] as NewsArticle[];
-      try {
-        const data =
-          selectedFilter === "ALL"
-            ? await getUserFeed(username)
-            : await getUserFeedBySentiment(username, selectedFilter);
-        setArticles(data);
-        setError("");
-        return data;
-      } catch {
-        setError("Couldn't load your feed. Check that the backend is running.");
-        return [] as NewsArticle[];
-      }
-    },
-    [username],
-  );
+  const wide = width >= 1180;
+
+  const loadFeed = useCallback(async () => {
+    if (!username) return [] as NewsArticle[];
+    try {
+      const data = await getUserFeed(username);
+      setArticles(data);
+      setError("");
+      return data;
+    } catch {
+      setError("Couldn't load your feed. Check that the backend is running.");
+      return [] as NewsArticle[];
+    }
+  }, [username]);
 
   useEffect(() => {
     setLoading(true);
-    loadFeed(filter).finally(() => setLoading(false));
-  }, [filter, loadFeed]);
+    loadFeed().finally(() => setLoading(false));
+  }, [loadFeed]);
 
-  // The very first time someone lands on an empty feed (a brand new user,
-  // or the news table hasn't been filled yet), automatically go fetch
-  // live articles instead of making them find the refresh button.
+  // First visit with an empty feed → fetch live news automatically
   useEffect(() => {
-    if (
-      !loading &&
-      !hasAutoFetched &&
-      articles.length === 0 &&
-      filter === "ALL"
-    ) {
+    if (!loading && !hasAutoFetched && articles.length === 0 && !error) {
       setHasAutoFetched(true);
       onRefresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, articles.length, hasAutoFetched, filter]);
+  }, [loading, articles.length, hasAutoFetched]);
 
-  // Triggers a fresh NewsData.io fetch (the server caches it for 30
-  // minutes, so this is safe to call often — it won't burn through your
-  // API credits). On mobile this also runs from pull-to-refresh; on web,
-  // the button below is the only way to trigger it since there's no drag
-  // gesture on a website.
   async function onRefresh() {
     if (!username) return;
     setRefreshing(true);
     setError("");
     try {
       await fetchLiveNews(username);
-      await loadFeed(filter);
+      await loadFeed();
     } catch {
       setError("Couldn't refresh. Check that the backend is running.");
     } finally {
@@ -96,158 +81,475 @@ export function DashboardScreen({ navigation }: any) {
     }
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Your Feed</Text>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={onRefresh}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.refreshButtonText}>Refresh news</Text>
-          )}
-        </TouchableOpacity>
+  // Apply today's vibe + mood
+  const mixed = useMemo(
+    () => mixByVibe(articles, upliftingShare),
+    [articles, upliftingShare],
+  );
+  const featured = useMemo(
+    () =>
+      mixed.find((a) => a.sentiment === "POSITIVE" && a.image_url) ||
+      mixed.find((a) => a.sentiment === "POSITIVE") ||
+      mixed[0],
+    [mixed],
+  );
+  const rest = useMemo(
+    () => mixed.filter((a) => a.id !== featured?.id),
+    [mixed, featured],
+  );
+
+  const categories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    rest.forEach((a) => {
+      const c = a.category || "General";
+      counts[c] = (counts[c] || 0) + 1;
+    });
+    return [
+      "For you",
+      ...Object.keys(counts)
+        .sort((a, b) => counts[b] - counts[a])
+        .slice(0, 5),
+    ];
+  }, [rest]);
+
+  useEffect(() => {
+    if (!categories.includes(category)) setCategory("For you");
+  }, [categories, category]);
+
+  const filtered =
+    category === "For you"
+      ? rest
+      : rest.filter((a) => (a.category || "General") === category);
+  const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
+
+  const columns = gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
+  const gap = 20;
+  const cardWidth = gridWidth
+    ? (gridWidth - gap * (columns - 1)) / columns
+    : undefined;
+
+  const openArticle = (id: number) =>
+    navigation.navigate("ArticleDetail", { id });
+
+  const today = new Date();
+  const name = user?.first_name || username || "friend";
+  const greetingSize = width < 700 ? 48 : width < 1100 ? 64 : 80;
+
+  const sidebar = (
+    <View
+      style={[
+        styles.sidebar,
+        !wide && styles.sidebarStacked,
+        !wide && width < 800 && { flexDirection: "column" },
+      ]}
+    >
+      <View style={!wide && width >= 800 ? { flex: 1 } : null}>
+        <MoodCheckInCard />
+      </View>
+      <View style={!wide && width >= 800 ? { flex: 1 } : null}>
+        <ReadingBalanceCard />
+      </View>
+    </View>
+  );
+
+  const storiesSection = (
+    <View style={{ marginTop: 56 }}>
+      <View style={styles.sectionHeader}>
+        <View style={{ flexShrink: 1 }}>
+          <Eyebrow style={{ marginBottom: 12 }}>Curated for your vibe</Eyebrow>
+          <Serif style={[styles.sectionTitle, width < 700 && { fontSize: 34 }]}>
+            Good news, thoughtfully chosen
+          </Serif>
+        </View>
+        <View style={styles.sectionActions}>
+          <Pressable
+            onPress={onRefresh}
+            disabled={refreshing}
+            style={styles.linkBtn}
+            accessibilityLabel="Refresh news"
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primaryDark} />
+            ) : (
+              <Feather name="refresh-cw" size={14} color={colors.primaryDark} />
+            )}
+            <Sans style={styles.linkBtnText}>
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </Sans>
+          </Pressable>
+          {filtered.length > PAGE_SIZE ? (
+            <Pressable
+              onPress={() => setShowAll((s) => !s)}
+              style={styles.linkBtn}
+            >
+              <Sans style={styles.linkBtnText}>
+                {showAll ? "Show fewer" : "See all stories"}
+              </Sans>
+              <Feather
+                name={showAll ? "chevron-up" : "chevron-right"}
+                size={16}
+                color={colors.primaryDark}
+              />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {refreshing ? (
-        <Text style={styles.refreshingNote}>
-          Fetching the latest articles and scoring sentiment — this can take up
+        <Sans style={styles.note}>
+          Fetching the latest articles and scoring sentiment. This can take up
           to a minute the first time.
-        </Text>
+        </Sans>
       ) : null}
 
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[
-              styles.filterChip,
-              filter === f.key && styles.filterChipActive,
-            ]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filter === f.key && styles.filterTextActive,
+      <View style={styles.chips}>
+        {categories.map((c) => {
+          const active = c === category;
+          return (
+            <Pressable
+              key={c}
+              onPress={() => setCategory(c)}
+              style={({ hovered }: any) => [
+                styles.chip,
+                hovered && !active && { borderColor: colors.primary },
+                active && styles.chipActive,
               ]}
             >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Sans
+                style={[styles.chipText, active && { color: colors.white }]}
+              >
+                {c}
+              </Sans>
+            </Pressable>
+          );
+        })}
       </View>
+
+      <View
+        style={styles.grid}
+        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+      >
+        {visible.length === 0 ? (
+          <Sans style={styles.empty}>
+            {refreshing
+              ? "Loading your first batch of stories…"
+              : "No stories here yet. Tap Refresh to fetch the latest."}
+          </Sans>
+        ) : (
+          visible.map((a) => (
+            <ArticleCard
+              key={a.id}
+              article={a}
+              width={cardWidth}
+              onPress={() => openArticle(a.id)}
+            />
+          ))
+        )}
+      </View>
+    </View>
+  );
+
+  return (
+    <PageShell>
+      <View style={styles.greetingRow}>
+        <View style={{ flexShrink: 1 }}>
+          <View style={styles.eyebrowRow}>
+            <Ionicons
+              name="sparkles-outline"
+              size={13}
+              color={colors.primaryDark}
+            />
+            <Eyebrow>Your daily balance</Eyebrow>
+          </View>
+          <Serif
+            style={[
+              styles.greeting,
+              { fontSize: greetingSize, lineHeight: greetingSize * 1.05 },
+            ]}
+          >
+            {greetingForNow(today)}, {name}.
+          </Serif>
+          <Sans style={styles.lede}>
+            Here’s what’s moving the world forward today.
+          </Sans>
+        </View>
+        {width >= 700 ? (
+          <View style={styles.dateBlock}>
+            <Sans style={styles.weekday}>
+              {today.toLocaleDateString(undefined, { weekday: "long" })}
+            </Sans>
+            <Serif style={styles.date}>
+              {today.toLocaleDateString(undefined, {
+                month: "long",
+                day: "numeric",
+              })}
+            </Serif>
+          </View>
+        ) : null}
+      </View>
+
+      <VibeCard />
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
-      ) : error ? (
-        <Text style={styles.error}>{error}</Text>
+      ) : error && articles.length === 0 ? (
+        <View style={styles.errorBox}>
+          <Sans style={styles.errorText}>{error}</Sans>
+          <Pressable onPress={onRefresh} style={styles.errorBtn}>
+            <Sans style={{ color: colors.white, fontWeight: "700" }}>
+              Try again
+            </Sans>
+          </Pressable>
+        </View>
+      ) : wide ? (
+        <View style={styles.twoCol}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {featured ? (
+              <FeaturedStory
+                article={featured}
+                onPress={() => openArticle(featured.id)}
+              />
+            ) : null}
+            {storiesSection}
+          </View>
+          {sidebar}
+        </View>
       ) : (
-        <FlatList
-          data={articles}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
+        <View>
+          {featured ? (
+            <FeaturedStory
+              article={featured}
+              onPress={() => openArticle(featured.id)}
             />
-          }
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {refreshing
-                ? "Loading your first batch of articles..."
-                : 'No articles yet — tap "Refresh news" above to fetch the latest.'}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <ArticleCard
-              article={item}
-              onPress={() =>
-                navigation.navigate("ArticleDetail", { id: item.id })
-              }
-            />
-          )}
-        />
+          ) : null}
+          {sidebar}
+          {storiesSection}
+        </View>
       )}
-    </View>
+    </PageShell>
+  );
+}
+
+function FeaturedStory({
+  article,
+  onPress,
+}: {
+  article: NewsArticle;
+  onPress: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const long = article.title.length > 70;
+  const titleSize = width < 700 ? 36 : long ? 50 : 70;
+
+  return (
+    <Pressable onPress={onPress} style={[styles.featured, shadows.card]}>
+      <StoryImage
+        uri={article.image_url}
+        seed={article.category || article.title}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <svg
+          width="100%"
+          height="100%"
+          preserveAspectRatio="none"
+          viewBox="0 0 100 100"
+        >
+          <defs>
+            <linearGradient id="featuredFade" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor={colors.forest} stopOpacity="0.92" />
+              <stop offset="45%" stopColor={colors.forest} stopOpacity="0.6" />
+              <stop offset="80%" stopColor={colors.forest} stopOpacity="0.05" />
+            </linearGradient>
+          </defs>
+          <rect width="100" height="100" fill="url(#featuredFade)" />
+        </svg>
+      </View>
+
+      <View style={[styles.featuredContent, width < 700 && { padding: 24 }]}>
+        <View
+          style={[styles.featuredTop, width < 700 && { left: 24, top: 24 }]}
+        >
+          <View style={styles.featuredBadge}>
+            <Sans style={styles.featuredBadgeText}>
+              {article.sentiment === "POSITIVE"
+                ? "Positive"
+                : article.sentiment === "NEUTRAL"
+                  ? "Neutral"
+                  : "Deeper read"}
+            </Sans>
+          </View>
+          <Sans style={styles.featuredKicker}>Today’s featured story</Sans>
+        </View>
+
+        <Serif
+          style={[
+            styles.featuredTitle,
+            { fontSize: titleSize, lineHeight: titleSize * 1.0 },
+          ]}
+          numberOfLines={5}
+        >
+          {article.title}
+        </Serif>
+        {article.description ? (
+          <Sans style={styles.featuredDesc} numberOfLines={3}>
+            {article.description}
+          </Sans>
+        ) : null}
+
+        <Pressable
+          onPress={onPress}
+          style={({ hovered }: any) => [
+            styles.readBtn,
+            hovered && { backgroundColor: colors.butter },
+          ]}
+        >
+          <Sans style={styles.readBtnText}>Read the story</Sans>
+          <Feather name="chevron-right" size={16} color={colors.primaryDark} />
+        </Pressable>
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  headerRow: {
+  greetingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
+    alignItems: "flex-end",
+    gap: 24,
+    marginBottom: 32,
   },
-  header: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: colors.text,
-  },
-  refreshButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    minWidth: 100,
-    alignItems: "center",
-  },
-  refreshButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  refreshingNote: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 12,
-  },
-  filterRow: {
+  eyebrowRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 10,
   },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  greeting: { letterSpacing: -2.5 },
+  lede: { fontSize: 17, color: colors.textBody, marginTop: 20 },
+  dateBlock: {
+    borderLeftWidth: 1,
+    borderLeftColor: colors.borderStrong,
+    paddingLeft: 28,
+    paddingVertical: 6,
+    alignItems: "flex-end",
+  },
+  weekday: { fontSize: 14, color: colors.textBody, marginBottom: 4 },
+  date: { fontSize: 22 },
+  twoCol: { flexDirection: "row", gap: 40, alignItems: "flex-start" },
+  sidebar: { width: 362, gap: 20 },
+  sidebarStacked: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginTop: 24,
+  },
+  featured: {
+    height: 526,
+    borderRadius: radius.xl,
+    overflow: "hidden",
+    backgroundColor: colors.forest,
+  },
+  featuredContent: {
+    flex: 1,
+    paddingTop: 26,
+    paddingHorizontal: 74,
+    paddingBottom: 26,
+    justifyContent: "center",
+    maxWidth: 720,
+  },
+  featuredTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    position: "absolute",
+    top: 26,
+    left: 74,
+  } as any,
+  featuredBadge: {
+    backgroundColor: colors.butter,
     borderRadius: 999,
-    backgroundColor: colors.card,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  featuredBadgeText: { fontSize: 12, fontWeight: "700", color: "#6E6A2C" },
+  featuredKicker: { fontSize: 13.5, color: "rgba(255,255,255,0.92)" },
+  featuredTitle: {
+    color: colors.white,
+    letterSpacing: -2,
+    maxWidth: 560,
+    marginTop: 36,
+  },
+  featuredDesc: {
+    fontSize: 17,
+    lineHeight: 27,
+    color: "rgba(255,255,255,0.9)",
+    marginTop: 34,
+    maxWidth: 460,
+  },
+  readBtn: {
+    marginTop: 30,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 999,
+  },
+  readBtnText: { fontSize: 14.5, fontWeight: "700", color: colors.primaryDark },
+  sectionHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 16,
+    marginBottom: 26,
+  },
+  sectionTitle: { fontSize: 46, lineHeight: 52, letterSpacing: -1 },
+  sectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    paddingBottom: 6,
+  },
+  linkBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
+  linkBtnText: { fontSize: 14, fontWeight: "600", color: colors.primaryDark },
+  note: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: -10,
+    marginBottom: 18,
+  },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 24 },
+  chip: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  filterChipActive: {
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 14, fontWeight: "600", color: colors.text },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  empty: { color: colors.textMuted, paddingVertical: 30 },
+  errorBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 32,
+    alignItems: "center",
+    gap: 16,
+  },
+  errorText: { color: colors.danger, textAlign: "center" },
+  errorBtn: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.textMuted,
-  },
-  filterTextActive: {
-    color: "#fff",
-  },
-  error: {
-    color: colors.danger,
-    textAlign: "center",
-    marginTop: 40,
-  },
-  empty: {
-    textAlign: "center",
-    color: colors.textMuted,
-    marginTop: 40,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
   },
 });

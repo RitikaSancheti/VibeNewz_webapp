@@ -1,17 +1,17 @@
 import { useState } from "react";
 import {
   View,
-  Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { getUser, createUser } from "../api";
-import { colors } from "../theme";
+import { Sans, Serif, Eyebrow } from "../components/Typography";
+import { Logo } from "../components/TopNav";
+import { colors, fonts, radius, shadows } from "../theme";
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -25,18 +25,13 @@ export function LoginScreen() {
       setError("Please enter a username");
       return;
     }
-
     setLoading(true);
     setError("");
     try {
-      // Same as the old app: if the username doesn't exist yet, create it.
-      // There's no password — this is a demo login, not real auth.
       let userData = await getUser(trimmed);
-      if (!userData) {
-        userData = await createUser(trimmed);
-      }
+      if (!userData) userData = await createUser(trimmed);
       await login(trimmed, userData);
-    } catch (err) {
+    } catch {
       setError("Could not connect to the backend. Is your server running?");
     } finally {
       setLoading(false);
@@ -44,80 +39,115 @@ export function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <Text style={styles.logo}>VibeNewz</Text>
-      <Text style={styles.subtitle}>News, sorted by how it makes you feel.</Text>
+    <View style={styles.page}>
+      <View style={[styles.card, shadows.raised]}>
+        <Logo size={40} />
+        <View style={styles.eyebrowRow}>
+          <Ionicons
+            name="sparkles-outline"
+            size={13}
+            color={colors.primaryDark}
+          />
+          <Eyebrow>News that lifts you up</Eyebrow>
+        </View>
+        <Serif style={styles.title}>Welcome back.</Serif>
+        <Sans style={styles.subtitle}>
+          News, balanced for how you want to feel today.
+        </Sans>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Enter a username"
-        placeholderTextColor={colors.textMuted}
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
+        <Sans style={styles.label}>Username</Sans>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. maya"
+          placeholderTextColor={colors.textMuted}
+          value={username}
+          onChangeText={setUsername}
+          onSubmitEditing={handleLogin}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Sans style={styles.error}>{error}</Sans> : null}
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Continue</Text>
-        )}
-      </TouchableOpacity>
-    </KeyboardAvoidingView>
+        <Pressable
+          style={({ hovered }: any) => [
+            styles.button,
+            hovered && { backgroundColor: colors.primaryDark },
+          ]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Sans style={styles.buttonText}>Continue</Sans>
+          )}
+        </Pressable>
+        <Sans style={styles.hint}>
+          New here? Just pick a username and we’ll create your space.
+        </Sans>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  page: {
     flex: 1,
     backgroundColor: colors.background,
     justifyContent: "center",
-    paddingHorizontal: 24,
+    alignItems: "center",
+    padding: 16,
   },
-  logo: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: colors.primary,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: "center",
-    marginBottom: 32,
-  },
-  input: {
-    backgroundColor: colors.card,
+  card: {
+    width: "100%",
+    maxWidth: 460,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    padding: 40,
+  },
+  eyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 36,
+    marginBottom: 10,
+  },
+  title: { fontSize: 52, lineHeight: 56, letterSpacing: -1.5 },
+  subtitle: {
+    fontSize: 15.5,
+    color: colors.textBody,
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  label: { fontSize: 12.5, fontWeight: "600", marginBottom: 6 },
+  input: {
+    backgroundColor: colors.cream,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
+    color: colors.text,
+    fontFamily: fonts.sans,
     marginBottom: 12,
   },
-  error: {
-    color: colors.danger,
-    marginBottom: 12,
-    fontSize: 13,
-  },
+  error: { color: colors.danger, marginBottom: 12, fontSize: 13 },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: 999,
     paddingVertical: 16,
     alignItems: "center",
+    marginTop: 4,
   },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
+  buttonText: { color: colors.white, fontWeight: "700", fontSize: 16 },
+  hint: {
+    fontSize: 12.5,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: 16,
   },
 });

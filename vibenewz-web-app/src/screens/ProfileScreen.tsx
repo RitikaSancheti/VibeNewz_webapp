@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, ReactNode, ComponentProps } from "react";
 import {
   View,
-  Text,
   TextInput,
-  TouchableOpacity,
-  ScrollView,
+  Pressable,
   StyleSheet,
-  FlatList,
+  useWindowDimensions,
 } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import {
   MutedKeyword,
@@ -17,7 +16,9 @@ import {
   updateAccountInfo,
   updateTopics,
 } from "../api";
-import { colors } from "../theme";
+import { PageShell, PageHeader } from "../components/PageShell";
+import { Sans, Serif, Eyebrow } from "../components/Typography";
+import { colors, fonts, radius, shadows } from "../theme";
 
 const ALL_TOPICS = [
   "Technology",
@@ -29,54 +30,127 @@ const ALL_TOPICS = [
   "Sports",
 ];
 
+function Card({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={[styles.card, shadows.card]}>
+      <Eyebrow style={{ marginBottom: 10 }}>{eyebrow}</Eyebrow>
+      <Serif style={styles.cardTitle}>{title}</Serif>
+      {subtitle ? <Sans style={styles.cardSubtitle}>{subtitle}</Sans> : null}
+      <View style={{ marginTop: 18 }}>{children}</View>
+    </View>
+  );
+}
+
+function Field(props: ComponentProps<typeof TextInput> & { label: string }) {
+  const { label, style, ...rest } = props;
+  return (
+    <View style={{ flex: 1, minWidth: 200 }}>
+      <Sans style={styles.label}>{label}</Sans>
+      <TextInput
+        placeholderTextColor={colors.textMuted}
+        style={[styles.input, style]}
+        {...rest}
+      />
+    </View>
+  );
+}
+
+function PrimaryButton({
+  label,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ hovered }: any) => [
+        styles.primaryBtn,
+        hovered && { backgroundColor: colors.primaryDark },
+        disabled && { opacity: 0.6 },
+      ]}
+    >
+      <Sans style={styles.primaryBtnText}>{label}</Sans>
+    </Pressable>
+  );
+}
+
 export function ProfileScreen() {
   const { username, user, updateUser, logout } = useAuth();
+  const { width } = useWindowDimensions();
 
-  // ── Account info ──────────────────────────────────────
   const [firstName, setFirstName] = useState(user?.first_name || "");
   const [lastName, setLastName] = useState(user?.last_name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [location, setLocation] = useState(user?.location || "");
-  const [savingAccount, setSavingAccount] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<
+    "" | "saving" | "saved" | "error"
+  >("");
 
-  // ── Topics ────────────────────────────────────────────
-  const [selectedTopics, setSelectedTopics] = useState<string[]>(user?.topics || []);
-  const [savingTopics, setSavingTopics] = useState(false);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>(
+    user?.topics || [],
+  );
+  const [topicStatus, setTopicStatus] = useState<
+    "" | "saving" | "saved" | "error"
+  >("");
 
-  // ── Muted keywords ────────────────────────────────────
   const [keywords, setKeywords] = useState<MutedKeyword[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
 
   useEffect(() => {
     if (!username) return;
-    getMutedKeywords(username).then(setKeywords).catch(() => {});
+    getMutedKeywords(username)
+      .then(setKeywords)
+      .catch(() => {});
   }, [username]);
 
   async function saveAccountInfo() {
     if (!username) return;
-    setSavingAccount(true);
+    setAccountStatus("saving");
     try {
-      const updated = await updateAccountInfo(username, { firstName, lastName, email, location });
+      const updated = await updateAccountInfo(username, {
+        firstName,
+        lastName,
+        email,
+        location,
+      });
       await updateUser(updated);
-    } finally {
-      setSavingAccount(false);
+      setAccountStatus("saved");
+    } catch {
+      setAccountStatus("error");
     }
   }
 
   function toggleTopic(topic: string) {
+    setTopicStatus("");
     setSelectedTopics((prev) =>
-      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
+      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic],
     );
   }
 
   async function saveTopics() {
     if (!username) return;
-    setSavingTopics(true);
+    setTopicStatus("saving");
     try {
       const updated = await updateTopics(username, selectedTopics);
       await updateUser(updated);
-    } finally {
-      setSavingTopics(false);
+      setTopicStatus("saved");
+    } catch {
+      setTopicStatus("error");
     }
   }
 
@@ -97,161 +171,289 @@ export function ProfileScreen() {
     setKeywords((prev) => prev.filter((k) => k.id !== id));
   }
 
+  const statusText = (s: string) =>
+    s === "saved"
+      ? "Saved ✓"
+      : s === "error"
+        ? "Couldn't save. Is the backend running?"
+        : "";
+
+  const twoCol = width >= 1000;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
-      <Text style={styles.header}>Profile</Text>
-      <Text style={styles.username}>@{username}</Text>
+    <PageShell>
+      <PageHeader
+        icon="settings"
+        eyebrow="Preferences"
+        title="Vibe, topics and boundaries"
+        subtitle={`Signed in as @${username}. Tune what reaches you, and what doesn’t.`}
+      />
 
-      {/* ── Account info ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Account</Text>
-        <TextInput style={styles.input} placeholder="First name" value={firstName} onChangeText={setFirstName} />
-        <TextInput style={styles.input} placeholder="Last name" value={lastName} onChangeText={setLastName} />
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput style={styles.input} placeholder="Location" value={location} onChangeText={setLocation} />
-        <TouchableOpacity style={styles.saveButton} onPress={saveAccountInfo} disabled={savingAccount}>
-          <Text style={styles.saveButtonText}>{savingAccount ? "Saving..." : "Save account info"}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Topics ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Topics you follow</Text>
-        <View style={styles.topicsWrap}>
-          {ALL_TOPICS.map((topic) => {
-            const active = selectedTopics.includes(topic);
-            return (
-              <TouchableOpacity
-                key={topic}
-                style={[styles.topicChip, active && styles.topicChipActive]}
-                onPress={() => toggleTopic(topic)}
-              >
-                <Text style={[styles.topicText, active && styles.topicTextActive]}>{topic}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <TouchableOpacity style={styles.saveButton} onPress={saveTopics} disabled={savingTopics}>
-          <Text style={styles.saveButtonText}>{savingTopics ? "Saving..." : "Save topics"}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Muted keywords ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Muted keywords</Text>
-        <Text style={styles.cardSubtitle}>
-          Articles containing these words are hidden from your feed.
-        </Text>
-
-        <View style={styles.keywordInputRow}>
-          <TextInput
-            style={[styles.input, { flex: 1, marginBottom: 0 }]}
-            placeholder="e.g. election"
-            value={keywordInput}
-            onChangeText={setKeywordInput}
-            onSubmitEditing={handleAddKeyword}
-          />
-          <TouchableOpacity style={styles.addButton} onPress={handleAddKeyword}>
-            <Text style={styles.addButtonText}>Add</Text>
-          </TouchableOpacity>
-        </View>
-
-        <FlatList
-          data={keywords}
-          keyExtractor={(item) => String(item.id)}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <View style={styles.keywordRow}>
-              <Text style={styles.keywordText}>{item.keyword}</Text>
-              <TouchableOpacity onPress={() => handleRemoveKeyword(item.id)}>
-                <Text style={styles.removeText}>Remove</Text>
-              </TouchableOpacity>
+      <View style={[styles.row, !twoCol && { flexDirection: "column" }]}>
+        <View style={{ flex: 1, gap: 20 }}>
+          <Card
+            eyebrow="Account"
+            title="About you"
+            subtitle="Your first name is used in your daily greeting."
+          >
+            <View style={styles.fieldRow}>
+              <Field
+                label="First name"
+                placeholder="Maya"
+                value={firstName}
+                onChangeText={setFirstName}
+              />
+              <Field
+                label="Last name"
+                placeholder="Santos"
+                value={lastName}
+                onChangeText={setLastName}
+              />
             </View>
-          )}
-          ListEmptyComponent={<Text style={styles.cardSubtitle}>No muted keywords yet.</Text>}
-        />
-      </View>
+            <View style={styles.fieldRow}>
+              <Field
+                label="Email"
+                placeholder="you@example.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <Field
+                label="Location"
+                placeholder="Toronto"
+                value={location}
+                onChangeText={setLocation}
+              />
+            </View>
+            <View style={styles.actionRow}>
+              <PrimaryButton
+                label={
+                  accountStatus === "saving" ? "Saving…" : "Save account info"
+                }
+                onPress={saveAccountInfo}
+                disabled={accountStatus === "saving"}
+              />
+              <Sans
+                style={[
+                  styles.status,
+                  accountStatus === "error" && { color: colors.danger },
+                ]}
+              >
+                {statusText(accountStatus)}
+              </Sans>
+            </View>
+          </Card>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-        <Text style={styles.logoutButtonText}>Log out</Text>
-      </TouchableOpacity>
-    </ScrollView>
+          <Card
+            eyebrow="Topics"
+            title="Topics you follow"
+            subtitle="Leave all unselected to see every topic."
+          >
+            <View style={styles.topicsWrap}>
+              {ALL_TOPICS.map((topic) => {
+                const active = selectedTopics.includes(topic);
+                return (
+                  <Pressable
+                    key={topic}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => toggleTopic(topic)}
+                  >
+                    {active ? (
+                      <Feather name="check" size={14} color={colors.white} />
+                    ) : null}
+                    <Sans
+                      style={[
+                        styles.chipText,
+                        active && { color: colors.white },
+                      ]}
+                    >
+                      {topic}
+                    </Sans>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.actionRow}>
+              <PrimaryButton
+                label={topicStatus === "saving" ? "Saving…" : "Save topics"}
+                onPress={saveTopics}
+                disabled={topicStatus === "saving"}
+              />
+              <Sans
+                style={[
+                  styles.status,
+                  topicStatus === "error" && { color: colors.danger },
+                ]}
+              >
+                {statusText(topicStatus)}
+              </Sans>
+            </View>
+          </Card>
+        </View>
+
+        <View style={{ flex: twoCol ? 0.8 : 1, gap: 20 }}>
+          <Card
+            eyebrow="Boundaries"
+            title="Muted keywords"
+            subtitle="Stories containing these words are hidden from your feed."
+          >
+            <View style={styles.keywordInputRow}>
+              <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                placeholder="e.g. election"
+                placeholderTextColor={colors.textMuted}
+                value={keywordInput}
+                onChangeText={setKeywordInput}
+                onSubmitEditing={handleAddKeyword}
+              />
+              <Pressable style={styles.addButton} onPress={handleAddKeyword}>
+                <Feather name="plus" size={16} color={colors.white} />
+                <Sans style={{ color: colors.white, fontWeight: "700" }}>
+                  Add
+                </Sans>
+              </Pressable>
+            </View>
+
+            {keywords.length === 0 ? (
+              <Sans style={styles.cardSubtitle}>No muted keywords yet.</Sans>
+            ) : (
+              <View style={styles.topicsWrap}>
+                {keywords.map((k) => (
+                  <View key={k.id} style={styles.keywordChip}>
+                    <Sans style={styles.keywordText}>{k.keyword}</Sans>
+                    <Pressable
+                      onPress={() => handleRemoveKeyword(k.id)}
+                      accessibilityLabel={`Unmute ${k.keyword}`}
+                    >
+                      <Feather name="x" size={14} color="#9A5A1C" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+
+          <View style={[styles.card, shadows.card, styles.logoutCard]}>
+            <View style={{ flex: 1 }}>
+              <Serif style={{ fontSize: 22 }}>Taking a break?</Serif>
+              <Sans style={styles.cardSubtitle}>
+                You can sign back in with the same username any time.
+              </Sans>
+            </View>
+            <Pressable style={styles.logoutButton} onPress={logout}>
+              <Feather name="log-out" size={16} color={colors.danger} />
+              <Sans style={{ color: colors.danger, fontWeight: "700" }}>
+                Log out
+              </Sans>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </PageShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: { fontSize: 24, fontWeight: "800", color: colors.text },
-  username: { fontSize: 14, color: colors.textMuted, marginBottom: 16 },
+  row: { flexDirection: "row", gap: 20, alignItems: "flex-start" },
   card: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    padding: 28,
   },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: 4 },
-  cardSubtitle: { fontSize: 13, color: colors.textMuted, marginBottom: 12 },
+  cardTitle: { fontSize: 26, lineHeight: 30 },
+  cardSubtitle: { fontSize: 13.5, color: colors.textMuted, marginTop: 6 },
+  fieldRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: colors.textBody,
+    marginBottom: 6,
+  },
   input: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.cream,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    marginBottom: 10,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 4,
+    fontSize: 14.5,
+    color: colors.text,
+    fontFamily: fonts.sans,
   },
-  saveButtonText: { color: "#fff", fontWeight: "700" },
-  topicsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  topicChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 6,
+  },
+  status: { fontSize: 13, color: colors.primaryDark, fontWeight: "600" },
+  primaryBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+  },
+  primaryBtnText: { color: colors.white, fontWeight: "700", fontSize: 14 },
+  topicsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 18,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.cream,
   },
-  topicChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  topicText: { fontSize: 13, color: colors.text, fontWeight: "600" },
-  topicTextActive: { color: "#fff" },
-  keywordInputRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 13.5, color: colors.text, fontWeight: "600" },
+  keywordInputRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
   addButton: {
-    backgroundColor: colors.text,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    justifyContent: "center",
-  },
-  addButtonText: { color: "#fff", fontWeight: "700" },
-  keywordRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.text,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  keywordChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.peachSoft,
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
-  keywordText: { fontSize: 14, color: colors.text },
-  removeText: { fontSize: 13, color: colors.danger, fontWeight: "600" },
-  logoutButton: {
+  keywordText: { fontSize: 13.5, color: "#7A4718", fontWeight: "600" },
+  logoutCard: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    marginBottom: 40,
+    gap: 16,
+    flexWrap: "wrap",
   },
-  logoutButtonText: { color: colors.danger, fontWeight: "700" },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#F0C9B8",
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
 });

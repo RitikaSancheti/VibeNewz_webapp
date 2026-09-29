@@ -1,73 +1,108 @@
-import { NavigationContainer } from "@react-navigation/native";
+// All pages share the top nav, so the bottom tab bar is gone and everything lives in one stack.
+import { NavigationContainer, LinkingOptions } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { ActivityIndicator, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "../context/AuthContext";
 import { colors } from "../theme";
 import { LoginScreen } from "../screens/LoginScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
-import { ArticleDetailScreen } from "../screens/ArticleDetailScreen";
-import { AnalyticsScreen } from "../screens/AnalyticsScreen";
-import { ProfileScreen } from "../screens/ProfileScreen";
+import { GlobalMapScreen } from "../screens/GlobalMapScreen";
 import { BookmarksScreen } from "../screens/BookmarksScreen";
+import { WellbeingScreen } from "../screens/WellbeingScreen";
+import { ProfileScreen } from "../screens/ProfileScreen";
+import { ArticleDetailScreen } from "../screens/ArticleDetailScreen";
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
 
-// The 4 main tabs — Dashboard, Bookmarks, Analytics, Profile.
-function MainTabs() {
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-            Dashboard: "home",
-            Bookmarks: "bookmark",
-            Analytics: "bar-chart",
-            Profile: "person",
-          };
-          return <Ionicons name={icons[route.name]} size={size} color={color} />;
-        },
-      })}
-    >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Bookmarks" component={BookmarksScreen} />
-      <Tab.Screen name="Analytics" component={AnalyticsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
-  );
-}
+// Gives each page its own browser URL (so refresh + back button work)
+const linking: LinkingOptions<any> = {
+  prefixes: [],
+  config: {
+    screens: {
+      Home: "",
+      GlobalMap: "map",
+      Bookmarks: "bookmarks",
+      Wellbeing: "wellbeing",
+      Profile: "preferences",
+      ArticleDetail: "article/:id",
+      Login: "login",
+    },
+  },
+};
 
 export function RootNavigator() {
   const { username, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.background,
+        }}
+      >
         <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <NavigationContainer
+      linking={linking}
+      documentTitle={{
+        formatter: (options) =>
+          options?.title ? `${options.title} · VibeNewz` : "VibeNewz",
+      }}
+    >
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: "none",
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         {username ? (
           <>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen
+              name="Home"
+              component={DashboardScreen}
+              options={{ title: "Home" }}
+            />
+            <Stack.Screen
+              name="GlobalMap"
+              component={GlobalMapScreen}
+              options={{ title: "Global map" }}
+            />
+            <Stack.Screen
+              name="Bookmarks"
+              component={BookmarksScreen}
+              options={{ title: "Bookmarks" }}
+            />
+            <Stack.Screen
+              name="Wellbeing"
+              component={WellbeingScreen}
+              options={{ title: "My wellbeing" }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ title: "Preferences" }}
+            />
             <Stack.Screen
               name="ArticleDetail"
               component={ArticleDetailScreen}
-              options={{ headerShown: true, title: "Article" }}
+              options={{ title: "Story" }}
             />
           </>
         ) : (
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ title: "Sign in" }}
+          />
         )}
       </Stack.Navigator>
     </NavigationContainer>

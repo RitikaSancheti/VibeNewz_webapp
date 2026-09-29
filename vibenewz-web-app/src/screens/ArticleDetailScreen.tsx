@@ -1,149 +1,221 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
-  Text,
-  ScrollView,
+  Pressable,
   StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
   Linking,
+  useWindowDimensions,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import { NewsArticle, getNewsById, addBookmark, removeBookmark, getBookmarks } from "../api";
+import { Feather } from "@expo/vector-icons";
+import { NewsArticle, getNewsById } from "../api";
+import { useBookmarks } from "../context/BookmarksContext";
+import { useWellbeing } from "../context/WellbeingContext";
+import { PageShell } from "../components/PageShell";
+import { StoryImage } from "../components/StoryImage";
 import { SentimentBadge } from "../components/SentimentBadge";
-import { colors } from "../theme";
+import { Sans, Serif } from "../components/Typography";
+import { colors, radius } from "../theme";
+import { readMinutes, titleCase } from "../utils/news";
 
-export function ArticleDetailScreen({ route }: any) {
+export function ArticleDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
-  const { username } = useAuth();
+  const { width } = useWindowDimensions();
+  const { isBookmarked, toggleBookmark } = useBookmarks();
+  const { recordRead, isLiked, toggleLike } = useWellbeing();
   const [article, setArticle] = useState<NewsArticle | null>(null);
-  const [isBookmarked, setIsBookmarked] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const data = await getNewsById(id);
-        setArticle(data);
+    setLoading(true);
+    getNewsById(id)
+      .then(setArticle)
+      .catch(() => setArticle(null))
+      .finally(() => setLoading(false));
+  }, [id]);
 
-        if (username) {
-          const bookmarks = await getBookmarks(username);
-          setIsBookmarked(bookmarks.some((b) => b.id === data.id));
-        }
-      } catch {
-        // article failed to load — screen will just show nothing below
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [id, username]);
+  // Track how long the story is on screen — feeds "Your reading balance".
+  const recordRef = useRef(recordRead);
+  recordRef.current = recordRead;
+  useFocusEffect(
+    useCallback(() => {
+      if (!article) return;
+      const openedAt = Date.now();
+      return () => recordRef.current(article, (Date.now() - openedAt) / 1000);
+    }, [article]),
+  );
 
-  async function toggleBookmark() {
-    if (!username || !article) return;
-    try {
-      if (isBookmarked) {
-        await removeBookmark(username, article.id);
-      } else {
-        await addBookmark(username, article.id);
-      }
-      setIsBookmarked(!isBookmarked);
-    } catch {
-      // already bookmarked / already removed — safe to ignore for this simple app
-    }
+  function goBack() {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate("Home");
   }
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (!article) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.error}>Article not found.</Text>
-      </View>
-    );
-  }
+  const titleSize = width < 700 ? 36 : 54;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
-      <SentimentBadge sentiment={article.sentiment} />
+    <PageShell>
+      <View style={styles.column}>
+        <Pressable onPress={goBack} style={styles.back}>
+          <Feather name="arrow-left" size={16} color={colors.primaryDark} />
+          <Sans style={styles.backText}>Back</Sans>
+        </Pressable>
 
-      <Text style={styles.title}>{article.title}</Text>
-      <Text style={styles.meta}>
-        {article.source}
-        {article.category ? ` · ${article.category}` : ""}
-      </Text>
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        ) : !article ? (
+          <Sans style={{ color: colors.danger, marginTop: 20 }}>
+            Article not found.
+          </Sans>
+        ) : (
+          <>
+            <View style={styles.metaRow}>
+              <SentimentBadge sentiment={article.sentiment} />
+              <Sans style={styles.meta}>
+                {article.category || "General"} · {readMinutes(article)} min
+                read
+              </Sans>
+            </View>
 
-      <Text style={styles.body}>{article.content || article.description}</Text>
+            <Serif
+              style={[
+                styles.title,
+                { fontSize: titleSize, lineHeight: titleSize * 1.05 },
+              ]}
+            >
+              {article.title}
+            </Serif>
+            <Sans style={styles.source}>
+              {article.source}
+              {article.country ? `  ·  ${titleCase(article.country)}` : ""}
+              {article.published_at
+                ? `  ·  ${new Date(article.published_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}`
+                : ""}
+            </Sans>
 
-      <TouchableOpacity style={styles.bookmarkButton} onPress={toggleBookmark}>
-        <Text style={styles.bookmarkButtonText}>
-          {isBookmarked ? "★ Remove bookmark" : "☆ Bookmark this article"}
-        </Text>
-      </TouchableOpacity>
+            <StoryImage
+              uri={article.image_url}
+              seed={article.category || article.title}
+              style={styles.hero}
+            />
 
-      {article.url ? (
-        <TouchableOpacity onPress={() => Linking.openURL(article.url)}>
-          <Text style={styles.link}>Read full article on {article.source} →</Text>
-        </TouchableOpacity>
-      ) : null}
-    </ScrollView>
+            <Sans style={styles.body}>
+              {article.content || article.description}
+            </Sans>
+
+            <View style={styles.actions}>
+              {article.url ? (
+                <Pressable
+                  onPress={() => Linking.openURL(article.url)}
+                  style={({ hovered }: any) => [
+                    styles.primaryBtn,
+                    hovered && { backgroundColor: colors.primaryDark },
+                  ]}
+                >
+                  <Sans style={styles.primaryBtnText}>
+                    Read full article on {article.source}
+                  </Sans>
+                  <Feather
+                    name="external-link"
+                    size={15}
+                    color={colors.white}
+                  />
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => toggleBookmark(article)}
+                style={[
+                  styles.ghostBtn,
+                  isBookmarked(article.id) && styles.ghostBtnActive,
+                ]}
+              >
+                <Feather
+                  name="bookmark"
+                  size={16}
+                  color={isBookmarked(article.id) ? colors.white : colors.text}
+                />
+                <Sans
+                  style={[
+                    styles.ghostText,
+                    isBookmarked(article.id) && { color: colors.white },
+                  ]}
+                >
+                  {isBookmarked(article.id) ? "Saved" : "Bookmark"}
+                </Sans>
+              </Pressable>
+              <Pressable
+                onPress={() => toggleLike(article.id)}
+                style={styles.ghostBtn}
+              >
+                <Feather
+                  name="heart"
+                  size={16}
+                  color={isLiked(article.id) ? colors.peach : colors.text}
+                />
+                <Sans style={styles.ghostText}>
+                  {isLiked(article.id) ? "Liked" : "Like"}
+                </Sans>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </View>
+    </PageShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
+  column: { width: "100%", maxWidth: 860, alignSelf: "center" },
+  back: {
+    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.background,
+    gap: 8,
+    alignSelf: "flex-start",
+    marginBottom: 28,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: colors.text,
-    marginTop: 12,
-    marginBottom: 4,
+  backText: { fontSize: 14, fontWeight: "600", color: colors.primaryDark },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 18,
   },
-  meta: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 16,
+  meta: { fontSize: 13.5, color: colors.textMuted },
+  title: { letterSpacing: -1.5 },
+  source: { fontSize: 14, color: colors.textMuted, marginTop: 16 },
+  hero: {
+    height: 380,
+    width: "100%",
+    borderRadius: radius.lg,
+    marginTop: 30,
+    marginBottom: 30,
   },
-  body: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
-    marginBottom: 24,
-  },
-  bookmarkButton: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+  body: { fontSize: 18, lineHeight: 30, color: colors.text, marginBottom: 32 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 22,
     paddingVertical: 14,
+  },
+  primaryBtnText: { color: colors.white, fontWeight: "700", fontSize: 14.5 },
+  ghostBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
   },
-  bookmarkButtonText: {
-    fontWeight: "700",
-    color: colors.text,
+  ghostBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  link: {
-    color: colors.primary,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  error: {
-    color: colors.danger,
-  },
+  ghostText: { fontWeight: "600", color: colors.text, fontSize: 14 },
 });

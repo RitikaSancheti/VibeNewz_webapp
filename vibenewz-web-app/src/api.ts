@@ -27,6 +27,8 @@ export interface NewsArticle {
   sentiment: Sentiment;
   category?: string;
   published_at?: string;
+  image_url?: string | null; // NEW — photo from NewsData.io
+  country?: string | null; // NEW — e.g. "Philippines"
 }
 
 export interface AppUser {
@@ -121,7 +123,7 @@ export function getUserFeed(username: string): Promise<NewsArticle[]> {
 
 export function getUserFeedBySentiment(
   username: string,
-  sentiment: Sentiment
+  sentiment: Sentiment,
 ): Promise<NewsArticle[]> {
   return request(`/users/${username}/feed/${sentiment}`);
 }
@@ -136,8 +138,13 @@ export function addBookmark(username: string, newsId: number): Promise<void> {
   return request(`/users/${username}/bookmarks/${newsId}`, { method: "POST" });
 }
 
-export function removeBookmark(username: string, newsId: number): Promise<void> {
-  return request(`/users/${username}/bookmarks/${newsId}`, { method: "DELETE" });
+export function removeBookmark(
+  username: string,
+  newsId: number,
+): Promise<void> {
+  return request(`/users/${username}/bookmarks/${newsId}`, {
+    method: "DELETE",
+  });
 }
 
 // ---- Muted keywords ---------------------------------------------
@@ -146,14 +153,20 @@ export function getMutedKeywords(username: string): Promise<MutedKeyword[]> {
   return request(`/users/${username}/muted`);
 }
 
-export function addMutedKeyword(username: string, keyword: string): Promise<MutedKeyword> {
+export function addMutedKeyword(
+  username: string,
+  keyword: string,
+): Promise<MutedKeyword> {
   return request(`/users/${username}/muted`, {
     method: "POST",
     body: JSON.stringify({ keyword }),
   });
 }
 
-export function removeMutedKeyword(username: string, keywordId: number): Promise<void> {
+export function removeMutedKeyword(
+  username: string,
+  keywordId: number,
+): Promise<void> {
   return request(`/users/${username}/muted/${keywordId}`, { method: "DELETE" });
 }
 
@@ -176,7 +189,12 @@ export function createUser(username: string): Promise<AppUser> {
 
 export function updateAccountInfo(
   username: string,
-  info: { firstName: string; lastName: string; email: string; location: string }
+  info: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    location: string;
+  },
 ): Promise<AppUser> {
   return request(`/users/${username}/account`, {
     method: "PUT",
@@ -184,7 +202,10 @@ export function updateAccountInfo(
   });
 }
 
-export function updateTopics(username: string, topics: string[]): Promise<AppUser> {
+export function updateTopics(
+  username: string,
+  topics: string[],
+): Promise<AppUser> {
   return request(`/users/${username}/topics`, {
     method: "PUT",
     body: JSON.stringify({ topics }),

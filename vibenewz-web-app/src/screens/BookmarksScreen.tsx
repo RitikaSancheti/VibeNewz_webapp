@@ -1,72 +1,113 @@
 import { useCallback, useState } from "react";
-import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { useAuth } from "../context/AuthContext";
-import { NewsArticle, getBookmarks } from "../api";
+import { Feather } from "@expo/vector-icons";
+import { useBookmarks } from "../context/BookmarksContext";
+import { PageShell, PageHeader, OutlinePill } from "../components/PageShell";
 import { ArticleCard } from "../components/ArticleCard";
-import { colors } from "../theme";
+import { Sans, Serif } from "../components/Typography";
+import { colors, radius } from "../theme";
 
 export function BookmarksScreen({ navigation }: any) {
-  const { username } = useAuth();
-  const [bookmarks, setBookmarks] = useState<NewsArticle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { bookmarks, loading, refresh } = useBookmarks();
+  const [gridWidth, setGridWidth] = useState(0);
 
-  // useFocusEffect re-loads bookmarks every time this tab is opened,
-  // so removing a bookmark on the detail screen shows up here right away.
   useFocusEffect(
     useCallback(() => {
-      if (!username) return;
-      setLoading(true);
-      getBookmarks(username)
-        .then(setBookmarks)
-        .finally(() => setLoading(false));
-    }, [username])
+      refresh();
+    }, [refresh]),
   );
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Bookmarks</Text>
+  const columns = gridWidth > 1000 ? 3 : gridWidth > 600 ? 2 : 1;
+  const gap = 20;
+  const cardWidth = gridWidth
+    ? Math.min(462, (gridWidth - gap * (columns - 1)) / columns)
+    : undefined;
 
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
-      ) : (
-        <FlatList
-          data={bookmarks}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              No bookmarks yet. Tap the ☆ on an article to save it here.
-            </Text>
-          }
-          renderItem={({ item }) => (
+  return (
+    <PageShell>
+      <PageHeader
+        icon="bookmark"
+        eyebrow="Your library"
+        title="Bookmarks"
+        subtitle="A quiet place for stories you want to return to."
+        right={<OutlinePill label={`${bookmarks.length} saved`} />}
+      />
+
+      <View
+        style={styles.grid}
+        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+      >
+        {loading && bookmarks.length === 0 ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : bookmarks.length === 0 ? (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Feather name="bookmark" size={22} color={colors.primaryDark} />
+            </View>
+            <Serif style={{ fontSize: 26, marginBottom: 6 }}>
+              Nothing saved yet
+            </Serif>
+            <Sans
+              style={{
+                color: colors.textMuted,
+                textAlign: "center",
+                marginBottom: 18,
+              }}
+            >
+              Tap the bookmark on any story to keep it here.
+            </Sans>
+            <Pressable
+              style={styles.emptyBtn}
+              onPress={() => navigation.navigate("Home")}
+            >
+              <Sans style={{ color: colors.white, fontWeight: "700" }}>
+                Browse today’s stories
+              </Sans>
+            </Pressable>
+          </View>
+        ) : (
+          bookmarks.map((item) => (
             <ArticleCard
+              key={item.id}
               article={item}
-              onPress={() => navigation.navigate("ArticleDetail", { id: item.id })}
+              width={cardWidth}
+              onPress={() =>
+                navigation.navigate("ArticleDetail", { id: item.id })
+              }
             />
-          )}
-        />
-      )}
-    </View>
+          ))
+        )}
+      </View>
+    </PageShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 16,
-    paddingTop: 8,
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  empty: {
+    width: "100%",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 56,
+    paddingHorizontal: 24,
   },
-  header: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: colors.text,
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.butter,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 16,
   },
-  empty: {
-    textAlign: "center",
-    color: colors.textMuted,
-    marginTop: 40,
+  emptyBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
   },
 });

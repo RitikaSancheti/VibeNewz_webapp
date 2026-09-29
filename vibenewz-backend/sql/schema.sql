@@ -54,4 +54,5 @@ create index if not exists idx_news_published_at on news(published_at desc);
 create index if not exists idx_bookmarks_user on user_bookmarks(user_id);
 create index if not exists idx_muted_user on muted_keywords(user_id);
 
-
+alter table news add column if not exists image_url text;
+alter table news add column if not exists country text;

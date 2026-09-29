@@ -27,7 +27,13 @@ const TOPIC_TO_CATEGORY = {
   Sports: "sports",
 };
 
-const DEFAULT_CATEGORIES = ["technology", "health", "science", "business", "politics"];
+const DEFAULT_CATEGORIES = [
+  "technology",
+  "health",
+  "science",
+  "business",
+  "politics",
+];
 
 // In-memory cache: username -> when we last fetched for them.
 // (This resets if you restart the server — that's fine for a school project.
@@ -70,7 +76,9 @@ async function fetchAndStoreForUser(username) {
     lastFetch && Date.now() - lastFetch < CACHE_MINUTES * 60 * 1000;
 
   if (cacheStillValid) {
-    console.log(`[newsFetch] cache hit for ${username}, skipping NewsData.io call`);
+    console.log(
+      `[newsFetch] cache hit for ${username}, skipping NewsData.io call`,
+    );
     return buildBalancedFeed();
   }
 
@@ -113,6 +121,8 @@ async function fetchAndStoreForUser(username) {
       url: article.link,
       source: article.source_name || "NewsData.io",
       category: firstCategory(article.category),
+      image_url: article.image_url || null, // NEW — photo for the story cards
+      country: firstCountry(article.country), // NEW — used by the Global map
       sentiment,
       published_at: parsePubDate(article.pubDate),
     });
@@ -120,14 +130,19 @@ async function fetchAndStoreForUser(username) {
     if (insertError) {
       // Most likely a duplicate that slipped in between our check and
       // this insert (two requests at once) — safe to ignore.
-      console.warn(`[newsFetch] insert skipped for ${article.article_id}:`, insertError.message);
+      console.warn(
+        `[newsFetch] insert skipped for ${article.article_id}:`,
+        insertError.message,
+      );
       skipCount++;
     } else {
       newCount++;
     }
   }
 
-  console.log(`[newsFetch] done for ${username}: ${newCount} new, ${skipCount} skipped`);
+  console.log(
+    `[newsFetch] done for ${username}: ${newCount} new, ${skipCount} skipped`,
+  );
   lastFetchTime.set(username, Date.now());
 
   return buildBalancedFeed();
@@ -146,7 +161,10 @@ async function fetchFromNewsData(categories) {
 
   const json = await response.json();
   if (json.status !== "success" || !Array.isArray(json.results)) {
-    console.warn("[newsFetch] NewsData.io response was not successful:", json.status);
+    console.warn(
+      "[newsFetch] NewsData.io response was not successful:",
+      json.status,
+    );
     return [];
   }
 
@@ -157,7 +175,7 @@ async function fetchFromNewsData(categories) {
       a.title &&
       a.description &&
       a.language &&
-      (a.language === "en" || a.language.startsWith("english"))
+      (a.language === "en" || a.language.startsWith("english")),
   );
 }
 
@@ -167,10 +185,18 @@ function firstCategory(categoryList) {
   return cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
+// NewsData.io sends country as a list, e.g. ["philippines"] -> "Philippines"
+function firstCountry(countryList) {
+  if (!countryList || countryList.length === 0) return null;
+  return countryList[0].replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function parsePubDate(pubDate) {
   if (!pubDate) return new Date().toISOString();
   const parsed = new Date(pubDate.replace(" ", "T") + "Z");
-  return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  return isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString();
 }
 
 // Builds a mixed feed: mostly positive articles, with some neutral and
@@ -197,7 +223,10 @@ async function topNBySentiment(sentiment, n) {
     .limit(n);
 
   if (error) {
-    console.error(`[newsFetch] failed to load ${sentiment} articles:`, error.message);
+    console.error(
+      `[newsFetch] failed to load ${sentiment} articles:`,
+      error.message,
+    );
     return [];
   }
   return data;
