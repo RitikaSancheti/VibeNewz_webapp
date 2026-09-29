@@ -144,7 +144,7 @@ export function ArticleDetailScreen({ route, navigation }: any) {
                 </Sans>
               </Pressable>
               <Pressable
-                onPress={() => toggleLike(article.id)}
+                onPress={() => toggleLike(article)}
                 style={styles.ghostBtn}
               >
                 <Feather

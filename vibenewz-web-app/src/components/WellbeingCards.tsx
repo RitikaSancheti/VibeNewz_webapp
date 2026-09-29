@@ -127,6 +127,50 @@ export function ReadingBalanceCard() {
   );
 }
 
+// ---- Muted keywords (shown on Home) -------------------------------------
+export function MutedKeywordsCard({
+  keywords,
+  onManage,
+}: {
+  keywords: string[];
+  onManage: () => void;
+}) {
+  return (
+    <View style={[styles.card, shadows.card]}>
+      <CardHeader
+        eyebrow="Your boundaries"
+        title="Muted keywords"
+        icon="eye-off"
+      />
+      <Sans style={styles.body}>
+        {keywords.length
+          ? "Stories mentioning these words are hidden from your feed."
+          : "Nothing is muted. Add words you’d rather not see in Preferences."}
+      </Sans>
+      {keywords.length ? (
+        <View style={styles.mutedWrap}>
+          {keywords.map((k) => (
+            <View key={k} style={styles.mutedChip}>
+              <Feather name="eye-off" size={12} color="#9A5A1C" />
+              <Sans style={styles.mutedText}>{k}</Sans>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Pressable
+        onPress={onManage}
+        style={styles.manageLink}
+        accessibilityLabel="Manage muted keywords"
+      >
+        <Sans style={styles.manageText}>
+          {keywords.length ? "Manage muted keywords" : "Add a muted keyword"}
+        </Sans>
+        <Feather name="chevron-right" size={15} color={colors.primaryDark} />
+      </Pressable>
+    </View>
+  );
+}
+
 // Plain SVG donut chart (no chart library needed)
 function Donut({
   segments,
@@ -268,4 +312,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  mutedWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 18,
+  },
+  mutedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.peachSoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  mutedText: { fontSize: 12.5, fontWeight: "600", color: "#7A4718" },
+  manageLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+  },
+  manageText: { fontSize: 13.5, fontWeight: "600", color: colors.primaryDark },
 });

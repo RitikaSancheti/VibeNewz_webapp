@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+// ============================================================
+// DashboardScreen.tsx — the "Home" page.
+// Greeting → today's vibe meter → featured story + sidebar
+// (mood, reading balance, muted keywords) → story grid.
+// ============================================================
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Pressable,
@@ -6,30 +12,38 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
-import { useWellbeing } from "../context/WellbeingContext";
-import { NewsArticle, getUserFeed, fetchLiveNews } from "../api";
+import { useWellbeing, orderByMood } from "../context/WellbeingContext";
+import {
+  NewsArticle,
+  getUserFeed,
+  fetchLiveNews,
+  getMutedKeywords,
+} from "../api";
 import { PageShell } from "../components/PageShell";
 import { ArticleCard } from "../components/ArticleCard";
 import { StoryImage } from "../components/StoryImage";
-import { VibeCard } from "../components/VibeSlider";
+import { VibeMeter } from "../components/VibeMeter";
 import {
   MoodCheckInCard,
   ReadingBalanceCard,
+  MutedKeywordsCard,
 } from "../components/WellbeingCards";
 import { Sans, Serif, Eyebrow } from "../components/Typography";
 import { colors, radius, shadows } from "../theme";
-import { greetingForNow, mixByVibe } from "../utils/news";
+import { greetingForNow } from "../utils/news";
 
 const PAGE_SIZE = 6;
 
 export function DashboardScreen({ navigation }: any) {
   const { username, user } = useAuth();
-  const { upliftingShare } = useWellbeing();
+  const { mood } = useWellbeing();
   const { width } = useWindowDimensions();
 
   const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [muted, setMuted] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -39,12 +53,20 @@ export function DashboardScreen({ navigation }: any) {
   const [gridWidth, setGridWidth] = useState(0);
 
   const wide = width >= 1180;
+  const topics = user?.topics || [];
+  const topicsKey = topics.join("|");
+  const lastTopicsKey = useRef<string | null>(null);
 
+  // ---- Data (same endpoints as before) ----
   const loadFeed = useCallback(async () => {
     if (!username) return [] as NewsArticle[];
     try {
-      const data = await getUserFeed(username);
+      const [data, mutedRows] = await Promise.all([
+        getUserFeed(username),
+        getMutedKeywords(username).catch(() => []),
+      ]);
       setArticles(data);
+      setMuted(mutedRows.map((m) => m.keyword));
       setError("");
       return data;
     } catch {
@@ -53,10 +75,23 @@ export function DashboardScreen({ navigation }: any) {
     }
   }, [username]);
 
-  useEffect(() => {
-    setLoading(true);
-    loadFeed().finally(() => setLoading(false));
-  }, [loadFeed]);
+  // Reload every time Home is shown, so changes made in Preferences
+  // (topics, muted keywords) show up straight away. If the topics
+  // changed, also fetch fresh news for the new topics.
+  useFocusEffect(
+    useCallback(() => {
+      const topicsChanged =
+        lastTopicsKey.current !== null && lastTopicsKey.current !== topicsKey;
+      lastTopicsKey.current = topicsKey;
+      if (topicsChanged) {
+        setCategory("For you");
+        onRefresh();
+      } else {
+        loadFeed().finally(() => setLoading(false));
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadFeed, topicsKey]),
+  );
 
   // First visit with an empty feed → fetch live news automatically
   useEffect(() => {
@@ -78,27 +113,28 @@ export function DashboardScreen({ navigation }: any) {
       setError("Couldn't refresh. Check that the backend is running.");
     } finally {
       setRefreshing(false);
+      setLoading(false);
     }
   }
 
-  // Apply today's vibe + mood
-  const mixed = useMemo(
-    () => mixByVibe(articles, upliftingShare),
-    [articles, upliftingShare],
-  );
+  // ---- Mood gently re-orders the feed (nothing is hidden) ----
+  const ordered = useMemo(() => orderByMood(articles, mood), [articles, mood]);
   const featured = useMemo(
     () =>
-      mixed.find((a) => a.sentiment === "POSITIVE" && a.image_url) ||
-      mixed.find((a) => a.sentiment === "POSITIVE") ||
-      mixed[0],
-    [mixed],
+      ordered.find((a) => a.sentiment === "POSITIVE" && a.image_url) ||
+      ordered.find((a) => a.sentiment === "POSITIVE") ||
+      ordered[0],
+    [ordered],
   );
   const rest = useMemo(
-    () => mixed.filter((a) => a.id !== featured?.id),
-    [mixed, featured],
+    () => ordered.filter((a) => a.id !== featured?.id),
+    [ordered, featured],
   );
 
+  // Chips = the topics saved in Preferences. If none are saved,
+  // fall back to the categories that are actually in the feed.
   const categories = useMemo(() => {
+    if (topics.length) return ["For you", ...topics];
     const counts: Record<string, number> = {};
     rest.forEach((a) => {
       const c = a.category || "General";
@@ -110,7 +146,8 @@ export function DashboardScreen({ navigation }: any) {
         .sort((a, b) => counts[b] - counts[a])
         .slice(0, 5),
     ];
-  }, [rest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rest, topicsKey]);
 
   useEffect(() => {
     if (!categories.includes(category)) setCategory("For you");
@@ -131,10 +168,13 @@ export function DashboardScreen({ navigation }: any) {
   const openArticle = (id: number) =>
     navigation.navigate("ArticleDetail", { id });
 
+  // ---- Pieces ----
   const today = new Date();
   const name = user?.first_name || username || "friend";
   const greetingSize = width < 700 ? 48 : width < 1100 ? 64 : 80;
 
+  const sideItem =
+    !wide && width >= 800 ? { flexGrow: 1, flexBasis: 320 } : null;
   const sidebar = (
     <View
       style={[
@@ -143,11 +183,17 @@ export function DashboardScreen({ navigation }: any) {
         !wide && width < 800 && { flexDirection: "column" },
       ]}
     >
-      <View style={!wide && width >= 800 ? { flex: 1 } : null}>
+      <View style={sideItem}>
         <MoodCheckInCard />
       </View>
-      <View style={!wide && width >= 800 ? { flex: 1 } : null}>
+      <View style={sideItem}>
         <ReadingBalanceCard />
+      </View>
+      <View style={sideItem}>
+        <MutedKeywordsCard
+          keywords={muted}
+          onManage={() => navigation.navigate("Profile")}
+        />
       </View>
     </View>
   );
@@ -232,8 +278,10 @@ export function DashboardScreen({ navigation }: any) {
         {visible.length === 0 ? (
           <Sans style={styles.empty}>
             {refreshing
-              ? "Loading your first batch of stories…"
-              : "No stories here yet. Tap Refresh to fetch the latest."}
+              ? "Loading stories for your topics…"
+              : category === "For you"
+                ? "No stories here yet. Tap Refresh to fetch the latest."
+                : `No ${category} stories yet. Tap Refresh to fetch the latest.`}
           </Sans>
         ) : (
           visible.map((a) => (
@@ -288,7 +336,7 @@ export function DashboardScreen({ navigation }: any) {
         ) : null}
       </View>
 
-      <VibeCard />
+      <VibeMeter articles={articles} />
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
@@ -442,6 +490,7 @@ const styles = StyleSheet.create({
   sidebarStacked: {
     width: "100%",
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "stretch",
     marginTop: 24,
   },

@@ -74,7 +74,7 @@ export function ArticleCard({ article, onPress, width }: Props) {
             accessibilityLabel={liked ? "Unlike" : "Like"}
             onPress={(e: any) => {
               e?.stopPropagation?.();
-              toggleLike(article.id);
+              toggleLike(article);
             }}
             style={styles.likeBtn}
           >

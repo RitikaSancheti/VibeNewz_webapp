@@ -65,10 +65,10 @@ export function TopNav() {
     [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
     `@${username}`;
 
-  function go(name: string) {
+  function go(name: string, params?: object) {
     setMenuOpen(false);
     setSearchOpen(false);
-    navigation.navigate(name);
+    navigation.navigate(name, params);
   }
 
   return (
@@ -186,6 +186,23 @@ export function TopNav() {
             </View>
             <Feather name="chevron-right" size={17} color={colors.text} />
           </Pressable>
+
+          <Pressable
+            style={({ hovered }: any) => [
+              styles.menuRow,
+              hovered && styles.menuRowHover,
+            ]}
+            onPress={() => go("Bookmarks", { tab: "liked" })}
+          >
+            <Feather name="heart" size={17} color={colors.text} />
+            <View style={{ flex: 1 }}>
+              <Sans style={styles.menuRowTitle}>Liked stories</Sans>
+              <Sans style={styles.menuRowSub}>Everything you’ve hearted</Sans>
+            </View>
+            <Feather name="chevron-right" size={17} color={colors.text} />
+          </Pressable>
+          <View style={styles.divider} />
+
           <Pressable
             style={({ hovered }: any) => [
               styles.menuRow,

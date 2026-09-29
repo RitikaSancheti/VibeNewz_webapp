@@ -1,6 +1,12 @@
 // ============================================================
-// WellbeingContext.tsx — vibe slider, mood check-ins, reading
-// history (for "Your reading balance") and likes, saved per user.
+// WellbeingContext.tsx
+//
+// Remembers the "feel" side of the app for each user:
+//   • mood check-ins ("How are you feeling?")
+//   • which stories they read and for how long (for "Your reading balance")
+//   • stories they liked (shown under Bookmarks → Liked)
+//
+// Saved with AsyncStorage (same as AuthContext), one entry per username.
 // ============================================================
 
 import {
@@ -18,41 +24,42 @@ import { NewsArticle, Sentiment } from "../api";
 
 export type Mood = "HOPEFUL" | "CALM" | "CURIOUS" | "CONCERNED";
 
+// Each mood changes the ORDER of your feed (nothing is hidden).
+// `order` = which sentiments come first.
 export const MOODS: {
   key: Mood;
   label: string;
   face: string;
   message: string;
-  vibeShift: number;
+  order: Sentiment[] | null;
 }[] = [
-  // vibeShift nudges how uplifting the feed is (in % points)
   {
     key: "HOPEFUL",
     label: "Hopeful",
     face: "‿",
     message: "Feeling hopeful. We'll keep that in mind.",
-    vibeShift: 0,
+    order: null,
   },
   {
     key: "CALM",
     label: "Calm",
     face: "⌒",
-    message: "Feeling calm. We'll keep things gentle today.",
-    vibeShift: 5,
+    message: "Feeling calm. Gentle stories come first today.",
+    order: ["POSITIVE", "NEUTRAL", "NEGATIVE"],
   },
   {
     key: "CURIOUS",
     label: "Curious",
     face: "?",
-    message: "Feeling curious. Expect a few more explainers.",
-    vibeShift: -10,
+    message: "Feeling curious. Explainers and fresh ideas first.",
+    order: ["NEUTRAL", "POSITIVE", "NEGATIVE"],
   },
   {
     key: "CONCERNED",
     label: "Concerned",
     face: "~",
-    message: "Feeling concerned. We'll lean a little brighter for you.",
-    vibeShift: 10,
+    message: "Feeling concerned. Heavier stories move to the bottom.",
+    order: ["POSITIVE", "NEUTRAL", "NEGATIVE"],
   },
 ];
 
@@ -64,28 +71,24 @@ export interface ReadEvent {
 }
 
 interface WellbeingState {
-  vibe: number;
   mood: Mood | null;
   moodHistory: { mood: Mood; at: number }[];
   reads: ReadEvent[];
-  liked: number[];
+  likes: NewsArticle[]; // full article, so the Liked tab can show it
 }
 
 const DEFAULT_STATE: WellbeingState = {
-  vibe: 76,
   mood: null,
   moodHistory: [],
   reads: [],
-  liked: [],
+  likes: [],
 };
 
 interface WellbeingContextType extends WellbeingState {
   ready: boolean;
-  upliftingShare: number;
-  setVibe: (value: number) => void;
   setMood: (mood: Mood) => void;
   recordRead: (article: NewsArticle, seconds: number) => void;
-  toggleLike: (id: number) => void;
+  toggleLike: (article: NewsArticle) => void;
   isLiked: (id: number) => boolean;
 }
 
@@ -104,11 +107,15 @@ export function WellbeingProvider({ children }: { children: ReactNode }) {
       return;
     }
     AsyncStorage.getItem(storageKey)
-      .then((stored) =>
-        setState(
-          stored ? { ...DEFAULT_STATE, ...JSON.parse(stored) } : DEFAULT_STATE,
-        ),
-      )
+      .then((stored) => {
+        const saved = stored ? JSON.parse(stored) : {};
+        setState({
+          mood: saved.mood ?? null,
+          moodHistory: saved.moodHistory ?? [],
+          reads: saved.reads ?? [],
+          likes: Array.isArray(saved.likes) ? saved.likes : [],
+        });
+      })
       .catch(() => setState(DEFAULT_STATE))
       .finally(() => setReady(true));
   }, [storageKey]);
@@ -127,14 +134,10 @@ export function WellbeingProvider({ children }: { children: ReactNode }) {
     [storageKey],
   );
 
-  const value = useMemo<WellbeingContextType>(() => {
-    const shift = MOODS.find((m) => m.key === state.mood)?.vibeShift || 0;
-    return {
+  const value = useMemo<WellbeingContextType>(
+    () => ({
       ...state,
       ready,
-      upliftingShare: Math.min(100, Math.max(0, state.vibe + shift)) / 100,
-      setVibe: (vibe) =>
-        update((prev) => ({ ...prev, vibe: Math.round(vibe) })),
       setMood: (mood) =>
         update((prev) => ({
           ...prev,
@@ -156,16 +159,17 @@ export function WellbeingProvider({ children }: { children: ReactNode }) {
             },
           ].slice(-500),
         })),
-      toggleLike: (id) =>
+      toggleLike: (article) =>
         update((prev) => ({
           ...prev,
-          liked: prev.liked.includes(id)
-            ? prev.liked.filter((x) => x !== id)
-            : [...prev.liked, id],
+          likes: prev.likes.some((a) => a.id === article.id)
+            ? prev.likes.filter((a) => a.id !== article.id)
+            : [article, ...prev.likes],
         })),
-      isLiked: (id) => state.liked.includes(id),
-    };
-  }, [state, ready, update]);
+      isLiked: (id) => state.likes.some((a) => a.id === id),
+    }),
+    [state, ready, update],
+  );
 
   return (
     <WellbeingContext.Provider value={value}>
@@ -179,6 +183,22 @@ export function useWellbeing() {
   if (!ctx)
     throw new Error("useWellbeing must be used inside WellbeingProvider");
   return ctx;
+}
+
+// ---- Mood ordering (used on Home) ------------------------------------
+export function orderByMood(
+  articles: NewsArticle[],
+  mood: Mood | null,
+): NewsArticle[] {
+  const byDate = (a: NewsArticle, b: NewsArticle) =>
+    new Date(b.published_at || 0).getTime() -
+    new Date(a.published_at || 0).getTime();
+  const order = MOODS.find((m) => m.key === mood)?.order;
+  if (!order) return [...articles].sort(byDate);
+  const rank = (s: Sentiment) => order.indexOf(s);
+  return [...articles].sort(
+    (a, b) => rank(a.sentiment) - rank(b.sentiment) || byDate(a, b),
+  );
 }
 
 // ---- Reading balance maths ----

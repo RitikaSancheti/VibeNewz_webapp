@@ -1,3 +1,9 @@
+// ============================================================
+// GlobalMapScreen.tsx — explore positive stories on a 3D globe.
+// Every country with a positive story gets a glowing pin.
+// Click a pin (or a region chip) to see its stories on the right.
+// ============================================================
+
 import { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -10,12 +16,18 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { NewsArticle, getUserFeedBySentiment } from "../api";
 import { PageShell, PageHeader, OutlinePill } from "../components/PageShell";
-import { Globe } from "../components/Globe";
+import { Globe, GlobePin } from "../components/Globe";
 import { StoryImage } from "../components/StoryImage";
 import { SentimentBadge } from "../components/SentimentBadge";
 import { Sans, Serif } from "../components/Typography";
 import { colors, radius, shadows } from "../theme";
-import { REGIONS, Region, regionForCountry, titleCase } from "../utils/news";
+import { titleCase } from "../utils/news";
+import {
+  REGIONS,
+  Region,
+  REGION_CENTERS,
+  countryInfo,
+} from "../utils/countries";
 
 export function GlobalMapScreen({ navigation }: any) {
   const { username } = useAuth();
@@ -25,6 +37,11 @@ export function GlobalMapScreen({ navigation }: any) {
   const [error, setError] = useState("");
   const [region, setRegion] = useState<Region>("Asia Pacific");
   const [index, setIndex] = useState(0);
+  const [focus, setFocus] = useState<{
+    lat: number;
+    lng: number;
+    id: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -36,6 +53,7 @@ export function GlobalMapScreen({ navigation }: any) {
       .finally(() => setLoading(false));
   }, [username]);
 
+  // Group stories by region (only stories whose country we can place)
   const byRegion = useMemo(() => {
     const groups: Record<Region, NewsArticle[]> = {
       "Asia Pacific": [],
@@ -44,38 +62,89 @@ export function GlobalMapScreen({ navigation }: any) {
       Americas: [],
     };
     articles.forEach((a) => {
-      const r = regionForCountry(a.country);
-      if (r) groups[r].push(a);
+      const info = countryInfo(a.country);
+      if (info) groups[info.region].push(a);
     });
     return groups;
   }, [articles]);
 
-  const counts = useMemo(
-    () =>
-      Object.fromEntries(REGIONS.map((r) => [r, byRegion[r].length])) as Record<
-        Region,
-        number
-      >,
-    [byRegion],
-  );
+  // One pin per country
+  const pins = useMemo<GlobePin[]>(() => {
+    const map = new Map<string, GlobePin>();
+    articles.forEach((a) => {
+      const info = countryInfo(a.country);
+      if (!info || !a.country) return;
+      const key = a.country.toLowerCase().trim();
+      const existing = map.get(key);
+      if (existing) existing.count++;
+      else
+        map.set(key, {
+          key,
+          label: titleCase(a.country),
+          lat: info.lat,
+          lng: info.lng,
+          count: 1,
+        });
+    });
+    return [...map.values()];
+  }, [articles]);
 
+  const stories = byRegion[region];
+  const story = stories[index];
+  const selectedKey = story?.country
+    ? story.country.toLowerCase().trim()
+    : null;
+
+  function turnTo(lat: number, lng: number) {
+    setFocus({ lat, lng, id: Date.now() });
+  }
+
+  // Once stories load, start on the first region that has some
   useEffect(() => {
-    if (!loading && counts[region] === 0) {
-      const withStories = REGIONS.find((r) => counts[r] > 0);
-      if (withStories) setRegion(withStories);
-    }
+    if (loading) return;
+    const start = byRegion[region].length
+      ? region
+      : REGIONS.find((r) => byRegion[r].length) || region;
+    setRegion(start);
+    const first = byRegion[start][0];
+    const info = countryInfo(first?.country);
+    if (info) turnTo(info.lat, info.lng);
+    else turnTo(REGION_CENTERS[start].lat, REGION_CENTERS[start].lng);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   function selectRegion(r: Region) {
     setRegion(r);
     setIndex(0);
+    const info = countryInfo(byRegion[r][0]?.country);
+    if (info) turnTo(info.lat, info.lng);
+    else turnTo(REGION_CENTERS[r].lat, REGION_CENTERS[r].lng);
   }
 
-  const stories = byRegion[region];
-  const story = stories[index];
+  function selectPin(key: string) {
+    const info = countryInfo(key);
+    if (!info) return;
+    const list = byRegion[info.region];
+    const i = list.findIndex(
+      (a) => (a.country || "").toLowerCase().trim() === key,
+    );
+    setRegion(info.region);
+    setIndex(Math.max(0, i));
+    turnTo(info.lat, info.lng);
+  }
+
+  function step(delta: number) {
+    const next = (index + delta + stories.length) % stories.length;
+    setIndex(next);
+    const info = countryInfo(stories[next]?.country);
+    if (info) turnTo(info.lat, info.lng);
+  }
+
   const stacked = width < 1050;
-  const globeSize = Math.min(444, width - (width < 700 ? 90 : 200));
+  const globeSize = Math.max(
+    260,
+    Math.min(500, width - (width < 700 ? 70 : 200)),
+  );
 
   return (
     <PageShell>
@@ -83,7 +152,7 @@ export function GlobalMapScreen({ navigation }: any) {
         icon="globe"
         eyebrow="Global view"
         title="Explore positive stories around the world"
-        subtitle="Choose a region to discover progress without the noise. Every story is presented in English."
+        subtitle="Spin the globe and tap a glowing pin to discover progress without the noise. Every story is presented in English."
         right={<OutlinePill label="EN · English" />}
       />
 
@@ -92,7 +161,7 @@ export function GlobalMapScreen({ navigation }: any) {
           styles.card,
           shadows.card,
           stacked && styles.cardStacked,
-          width < 700 && { padding: 20 },
+          width < 700 && { padding: 16 },
         ]}
       >
         <View style={styles.arcs} pointerEvents="none">
@@ -119,13 +188,14 @@ export function GlobalMapScreen({ navigation }: any) {
         <View style={styles.globeArea}>
           <Globe
             size={globeSize}
-            selected={region}
-            onSelect={selectRegion}
-            counts={counts}
+            pins={pins}
+            selectedKey={selectedKey}
+            focus={focus}
+            onSelectPin={selectPin}
           />
           <View style={styles.hintRow}>
             <View style={styles.hintDot} />
-            <Sans style={styles.hint}>Choose a glowing region</Sans>
+            <Sans style={styles.hint}>Drag to spin · tap a glowing pin</Sans>
           </View>
           <View style={styles.regionChips}>
             {REGIONS.map((r) => {
@@ -143,6 +213,15 @@ export function GlobalMapScreen({ navigation }: any) {
                     ]}
                   >
                     {r}
+                    <Sans
+                      style={[
+                        styles.regionCount,
+                        active && { color: "rgba(255,255,255,0.85)" },
+                      ]}
+                    >
+                      {" "}
+                      {byRegion[r].length}
+                    </Sans>
                   </Sans>
                 </Pressable>
               );
@@ -202,11 +281,7 @@ export function GlobalMapScreen({ navigation }: any) {
                   {stories.length > 1 ? (
                     <View style={styles.pager}>
                       <Pressable
-                        onPress={() =>
-                          setIndex(
-                            (i) => (i - 1 + stories.length) % stories.length,
-                          )
-                        }
+                        onPress={() => step(-1)}
                         style={styles.pagerBtn}
                         accessibilityLabel="Previous story"
                       >
@@ -220,9 +295,7 @@ export function GlobalMapScreen({ navigation }: any) {
                         {index + 1} / {stories.length}
                       </Sans>
                       <Pressable
-                        onPress={() =>
-                          setIndex((i) => (i + 1) % stories.length)
-                        }
+                        onPress={() => step(1)}
                         style={styles.pagerBtn}
                         accessibilityLabel="Next story"
                       >
@@ -260,8 +333,8 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 60,
-    paddingHorizontal: 50,
+    paddingVertical: 48,
+    paddingHorizontal: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 40,
@@ -274,7 +347,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: 14,
+    marginTop: 10,
   },
   hintDot: {
     width: 7,
@@ -288,7 +361,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     gap: 8,
-    marginTop: 22,
+    marginTop: 20,
   },
   regionChip: {
     paddingHorizontal: 14,
@@ -303,6 +376,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   regionChipText: { fontSize: 13, fontWeight: "600", color: colors.text },
+  regionCount: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
   storyCol: { width: 396 },
   storyCard: {
     backgroundColor: colors.surface,
