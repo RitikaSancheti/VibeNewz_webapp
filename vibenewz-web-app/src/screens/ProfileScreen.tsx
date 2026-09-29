@@ -20,14 +20,29 @@ import { PageShell, PageHeader } from "../components/PageShell";
 import { Sans, Serif, Eyebrow } from "../components/Typography";
 import { colors, fonts, radius, shadows } from "../theme";
 
+// Topics marked ☀ tend to bring more uplifting stories
 const ALL_TOPICS = [
-  "Technology",
   "Science",
   "Environment",
   "Health",
+  "Technology",
+  "Lifestyle",
+  "Education",
+  "Entertainment",
+  "Food",
+  "Tourism",
   "Business",
-  "Politics",
   "Sports",
+  "Politics",
+];
+const UPLIFTING_TOPICS = [
+  "Science",
+  "Environment",
+  "Health",
+  "Lifestyle",
+  "Education",
+  "Food",
+  "Tourism",
 ];
 
 function Card({
@@ -135,10 +150,15 @@ export function ProfileScreen() {
     }
   }
 
+  // NewsData.io's free plan accepts at most 5 topics per search
   function toggleTopic(topic: string) {
     setTopicStatus("");
     setSelectedTopics((prev) =>
-      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic],
+      prev.includes(topic)
+        ? prev.filter((t) => t !== topic)
+        : prev.length >= 5
+          ? prev
+          : [...prev, topic],
     );
   }
 
@@ -248,7 +268,7 @@ export function ProfileScreen() {
           <Card
             eyebrow="Topics"
             title="Topics you follow"
-            subtitle="Leave all unselected to see every topic."
+            subtitle="Pick up to 5. Topics marked ☀ usually bring more uplifting stories. Leave all unselected for our uplifting mix."
           >
             <View style={styles.topicsWrap}>
               {ALL_TOPICS.map((topic) => {
@@ -268,6 +288,7 @@ export function ProfileScreen() {
                         active && { color: colors.white },
                       ]}
                     >
+                      {UPLIFTING_TOPICS.includes(topic) ? "☀ " : ""}
                       {topic}
                     </Sans>
                   </Pressable>

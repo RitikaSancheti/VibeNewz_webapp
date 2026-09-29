@@ -95,8 +95,12 @@ export function getAllNews(): Promise<NewsArticle[]> {
   return request("/news");
 }
 
-export function fetchLiveNews(username: string): Promise<NewsArticle[]> {
-  return request(`/news/fetch/${username}`);
+// force = true skips the server's 30-minute cache (used by the Refresh button)
+export function fetchLiveNews(
+  username: string,
+  force = false,
+): Promise<NewsArticle[]> {
+  return request(`/news/fetch/${username}${force ? "?force=1" : ""}`);
 }
 
 export function getNewsById(id: number | string): Promise<NewsArticle> {

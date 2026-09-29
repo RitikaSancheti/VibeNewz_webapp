@@ -118,7 +118,10 @@ router.get("/analytics/trend", async (req, res) => {
 // GET /api/news/fetch/:username — pull fresh articles from NewsData.io for this user's topics
 router.get("/fetch/:username", async (req, res) => {
   try {
-    const news = await fetchAndStoreForUser(req.params.username);
+    // ?force=1 skips the 30-minute cache (the app's Refresh button sends this)
+    const news = await fetchAndStoreForUser(req.params.username, {
+      force: req.query.force === "1",
+    });
     res.json(news);
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });

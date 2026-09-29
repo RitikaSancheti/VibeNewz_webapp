@@ -10,38 +10,167 @@
 //   1. POST the text -> get back a ticket ("event_id")
 //   2. GET that ticket a couple seconds later -> read the result
 //
-// If anything goes wrong (network hiccup, model is asleep, weird
-// response) we just return "NEUTRAL" instead of crashing — a bad
-// sentiment guess is fine, a crashed server is not.
+// If the model is busy or broken we retry a few times, and if it still
+// fails we fall back to a simple word-based guess — never a crash.
 // ============================================================
 
 const BASE_URL = process.env.SENTIMENT_API_BASE_URL;
 const QUEUE_DELAY_MS = 3000; // how long we wait before checking the result
 
+const MAX_ATTEMPTS = 3; // the free model is often busy — try a few times
+
 async function getSentiment(title, description) {
   const text = `${title || ""}. ${description || ""}`;
 
-  try {
-    const eventId = await postToQueue(text);
-    if (!eventId) {
-      console.warn("[sentiment] no event_id returned, defaulting to NEUTRAL");
-      return "NEUTRAL";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const eventId = await postToQueue(text);
+      if (eventId) {
+        // give the model a moment to process the request
+        await sleep(QUEUE_DELAY_MS);
+
+        const rawStream = await fetchResult(eventId);
+        const label = parseSseStream(rawStream);
+
+        // A real answer mentions positive/negative/neutral. An error page
+        // (e.g. Hugging Face's "500 — Sorry, there is an error on our side")
+        // does not — treat that as a failure and try again.
+        if (looksLikeModelAnswer(label)) {
+          const result = mapToEnum(label);
+          console.log(
+            `[sentiment] model said: ${result} (${firstLine(label)})`,
+          );
+          return result;
+        }
+        console.warn(
+          `[sentiment] model returned an error page (attempt ${attempt}/${MAX_ATTEMPTS})`,
+        );
+      } else {
+        console.warn(
+          `[sentiment] model is busy (attempt ${attempt}/${MAX_ATTEMPTS})`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[sentiment] request failed (attempt ${attempt}/${MAX_ATTEMPTS}): ${err.message}`,
+      );
     }
-
-    // give the model a moment to process the request
-    await sleep(QUEUE_DELAY_MS);
-
-    const rawStream = await fetchResult(eventId);
-    const label = parseSseStream(rawStream);
-    console.log(`[sentiment] model said: "${label}"`);
-    return mapToEnum(label);
-  } catch (err) {
-    console.error(
-      "[sentiment] request failed, defaulting to NEUTRAL:",
-      err.message,
-    );
-    return "NEUTRAL";
+    if (attempt < MAX_ATTEMPTS) await sleep(1500 * attempt); // wait a bit longer each time
   }
+
+  // The model never answered — use a simple word-based guess instead of
+  // blindly calling every failed article NEUTRAL.
+  const guess = keywordSentiment(text);
+  console.warn(`[sentiment] model unavailable, word-based guess: ${guess}`);
+  return guess;
+}
+
+function looksLikeModelAnswer(label) {
+  if (!label || /<html|<!doctype/i.test(label)) return false;
+  return /positive|negative|neutral/i.test(label);
+}
+
+function firstLine(text) {
+  return (
+    String(text)
+      .split("\n")
+      .find((l) => l.trim()) || ""
+  ).trim();
+}
+
+// ---- Backup scorer (only used when the AI model is down) ----------------
+// Counts hopeful vs. heavy words in the headline + description.
+// Each entry matches the START of a word ("celebrat" → celebrate,
+// celebrates, celebration) so "war" won't match "award".
+const POSITIVE_WORDS = [
+  "breakthrough",
+  "celebrat",
+  "record-breaking",
+  "wins?\\b",
+  "won\\b",
+  "success",
+  "improv",
+  "recover",
+  "rescu",
+  "saved\\b",
+  "cure",
+  "hope\\b",
+  "hopeful",
+  "donat",
+  "volunteer",
+  "restor",
+  "thriv",
+  "boost",
+  "award",
+  "milestone",
+  "innovat",
+  "renewable",
+  "clean energy",
+  "protect",
+  "reunit",
+  "kindness",
+  "first-ever",
+  "discover",
+  "joy",
+  "inspir",
+  "heal",
+  "honou?r",
+  "achiev",
+  "triumph",
+  "uplift",
+];
+const NEGATIVE_WORDS = [
+  "kill",
+  "dead\\b",
+  "death",
+  "dies?\\b",
+  "died\\b",
+  "wars?\\b",
+  "attack",
+  "crash",
+  "flood",
+  "fires?\\b",
+  "shoot",
+  "crisis",
+  "collaps",
+  "fraud",
+  "scandal",
+  "lawsuit",
+  "arrest",
+  "injur",
+  "victim",
+  "threat",
+  "disaster",
+  "violen",
+  "fear",
+  "losses\\b",
+  "decline",
+  "slump",
+  "layoff",
+  "recession",
+  "outbreak",
+  "bomb",
+  "abus",
+  "corrupt",
+  "tariff",
+  "warn",
+  "conflict",
+  "murder",
+  "terror",
+  "famine",
+  "drought",
+];
+const toRegex = (list) => list.map((w) => new RegExp(`\\b${w}`, "i"));
+const POSITIVE_RE = toRegex(POSITIVE_WORDS);
+const NEGATIVE_RE = toRegex(NEGATIVE_WORDS);
+
+function keywordSentiment(text) {
+  const t = String(text);
+  const pos = POSITIVE_RE.filter((re) => re.test(t)).length;
+  const neg = NEGATIVE_RE.filter((re) => re.test(t)).length;
+  if (pos > neg) return "POSITIVE";
+  if (neg > pos) return "NEGATIVE";
+  return "NEUTRAL";
 }
 
 // Step 1: submit the text, get back an event_id
@@ -77,13 +206,7 @@ async function fetchResult(eventId) {
 //   event: complete
 //   data: ["Positive — 94.2% confidence"]
 //
-// The bug that was here before: we returned on the FIRST "data:" line we
-// found, which is usually that early, empty/partial "generating" event —
-// not the model's actual answer. Since that text never contains the word
-// "positive" or "negative", every article silently fell through to the
-// NEUTRAL default, even though the model itself was working fine.
-//
-// Fix: read through the WHOLE stream and keep the LAST "data:" line —
+// We read through the WHOLE stream and keep the LAST "data:" line —
 // that's the final "complete" event with the real result.
 function parseSseStream(rawStream) {
   if (!rawStream) return "";
@@ -109,15 +232,52 @@ function parseSseStream(rawStream) {
 
 // Turns whatever text the model said into one of our three fixed values.
 //
-// The model's real output looks like this (confirmed from the actual
-// Space UI):
-//   POSITIVE — 42.3% confidence
+// The model's real output looks like this:
+//   🔴 NEGATIVE  —  75.8% confidence
 //
-//   Negative  36.9%
-//   Neutral   20.8%
-//   Positive  42.3%
+//   🔴 Negative   75.8%
+//   🟡 Neutral    6.6%
+//   🟢 Positive   17.6%
 //
-// IMPORTANT: all three words show up in that text, every time (it's a
-// full confidence breakdown, not just the winner). Testing the whole
-// blob at once for "does it contain the word positive" was matching
-// "positive" almos
+// All three words show up every time (it's a full breakdown), so:
+//   1. If the first line is the "... confidence" winner line, use it.
+//   2. Otherwise pick the label with the highest % in the breakdown.
+//   3. Otherwise look for a plain word, and fall back to NEUTRAL.
+function mapToEnum(label) {
+  if (!label) return "NEUTRAL";
+  const text = String(label);
+  const firstLine = (
+    text.split("\n").find((l) => l.trim()) || ""
+  ).toLowerCase();
+  const pick = (line) =>
+    line.includes("positive")
+      ? "POSITIVE"
+      : line.includes("negative")
+        ? "NEGATIVE"
+        : line.includes("neutral")
+          ? "NEUTRAL"
+          : null;
+
+  // 1. The winner line, e.g. "POSITIVE — 42.3% confidence"
+  if (firstLine.includes("confidence") && pick(firstLine))
+    return pick(firstLine);
+
+  // 2. Otherwise pick the label with the highest % in the breakdown
+  const scores = {};
+  const re = /(positive|negative|neutral)[^0-9\n]*([0-9]+(?:\.[0-9]+)?)\s*%/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    scores[m[1].toUpperCase()] = parseFloat(m[2]);
+  }
+  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+  if (best) return best[0];
+
+  // 3. A plain one-word answer like "positive"
+  return pick(firstLine) || "NEUTRAL";
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+module.exports = { getSentiment, mapToEnum, keywordSentiment };

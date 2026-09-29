@@ -54,7 +54,9 @@ router.post("/", async (req, res) => {
     .maybeSingle();
 
   if (existing) {
-    return res.status(409).json({ error: `Username already exists: ${username}` });
+    return res
+      .status(409)
+      .json({ error: `Username already exists: ${username}` });
   }
 
   const { data, error } = await supabase
@@ -119,7 +121,9 @@ router.put("/:username/sentiment", async (req, res) => {
 
   const sentiment = (req.body.sentiment || "").toUpperCase();
   if (!["POSITIVE", "NEUTRAL", "NEGATIVE"].includes(sentiment)) {
-    return res.status(400).json({ error: "Invalid sentiment. Use: POSITIVE, NEUTRAL, or NEGATIVE" });
+    return res.status(400).json({
+      error: "Invalid sentiment. Use: POSITIVE, NEUTRAL, or NEGATIVE",
+    });
   }
 
   const { data, error } = await supabase
@@ -210,7 +214,8 @@ router.post("/:username/muted", async (req, res) => {
   if (!user) return;
 
   const keyword = (req.body.keyword || "").trim().toLowerCase();
-  if (!keyword) return res.status(400).json({ error: "keyword field is required" });
+  if (!keyword)
+    return res.status(400).json({ error: "keyword field is required" });
 
   const { data: existing } = await supabase
     .from("muted_keywords")
@@ -266,7 +271,9 @@ router.get("/:username/feed/:sentiment", async (req, res) => {
 
   const sentiment = req.params.sentiment.toUpperCase();
   if (!["POSITIVE", "NEUTRAL", "NEGATIVE"].includes(sentiment)) {
-    return res.status(400).json({ error: "Invalid sentiment. Use: POSITIVE, NEUTRAL, or NEGATIVE" });
+    return res.status(400).json({
+      error: "Invalid sentiment. Use: POSITIVE, NEUTRAL, or NEGATIVE",
+    });
   }
 
   const feed = await buildFilteredFeed(user, sentiment);
@@ -274,7 +281,10 @@ router.get("/:username/feed/:sentiment", async (req, res) => {
 });
 
 async function buildFilteredFeed(user, sentiment) {
-  let query = supabase.from("news").select("*").order("published_at", { ascending: false });
+  let query = supabase
+    .from("news")
+    .select("*")
+    .order("published_at", { ascending: false });
   if (sentiment) query = query.eq("sentiment", sentiment);
 
   const { data: articles, error } = await query;
@@ -301,7 +311,32 @@ async function buildFilteredFeed(user, sentiment) {
     result = result.filter((article) => user.topics.includes(article.category));
   }
 
+  // The main feed is balanced to be mostly uplifting. (Asking for one
+  // sentiment, e.g. /feed/NEGATIVE, still returns all of that sentiment.)
+  if (!sentiment) result = balanceFeed(result);
+
   return result;
+}
+
+// Keeps every positive story, then adds a smaller helping of neutral
+// and heavier ones — roughly 70% positive / 20% neutral / 10% deeper
+// reads — so the feed stays hopeful without hiding the world entirely.
+function balanceFeed(articles) {
+  const positive = articles.filter((a) => a.sentiment === "POSITIVE");
+  const neutral = articles.filter((a) => a.sentiment === "NEUTRAL");
+  const negative = articles.filter((a) => a.sentiment === "NEGATIVE");
+
+  const p = positive.length;
+  const neutralCap = Math.max(3, Math.round(p * 0.3));
+  const negativeCap = Math.max(1, Math.round(p * 0.15));
+
+  const byNewest = (a, b) =>
+    new Date(b.published_at) - new Date(a.published_at);
+  return [
+    ...positive,
+    ...neutral.slice(0, neutralCap),
+    ...negative.slice(0, negativeCap),
+  ].sort(byNewest);
 }
 
 module.exports = router;

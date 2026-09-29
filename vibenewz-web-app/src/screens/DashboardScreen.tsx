@@ -46,7 +46,11 @@ export function DashboardScreen({ navigation }: any) {
   const [muted, setMuted] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(""); // feed couldn't load at all
+  const [refreshError, setRefreshError] = useState(""); // refresh failed, but we still have stories
+  const [refreshNote, setRefreshNote] = useState(""); // "4 new stories added" after a refresh
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [, setClock] = useState(0); // re-renders the "Updated 2 min ago" label
   const [hasAutoFetched, setHasAutoFetched] = useState(false);
   const [category, setCategory] = useState("For you");
   const [showAll, setShowAll] = useState(false);
@@ -56,6 +60,9 @@ export function DashboardScreen({ navigation }: any) {
   const topics = user?.topics || [];
   const topicsKey = topics.join("|");
   const lastTopicsKey = useRef<string | null>(null);
+  const refreshingRef = useRef(false);
+  const articlesRef = useRef<NewsArticle[]>([]);
+  articlesRef.current = articles;
 
   // ---- Data (same endpoints as before) ----
   const loadFeed = useCallback(async () => {
@@ -68,16 +75,68 @@ export function DashboardScreen({ navigation }: any) {
       setArticles(data);
       setMuted(mutedRows.map((m) => m.keyword));
       setError("");
+      setLastUpdated(Date.now());
       return data;
-    } catch {
-      setError("Couldn't load your feed. Check that the backend is running.");
+    } catch (e: any) {
+      setError(
+        `Couldn't load your feed. ${e?.message || "Check that the backend is running."}`,
+      );
       return [] as NewsArticle[];
     }
   }, [username]);
 
+  // Pull new articles from NewsData.io, then reload the feed.
+  //  force = true  → Refresh button: skip the server's 30-minute cache
+  //  quiet = true  → background refresh: no spinner, no error banner
+  async function onRefresh(force = true, quiet = false) {
+    if (!username || refreshingRef.current) return;
+    refreshingRef.current = true;
+    const before = new Set(articlesRef.current.map((a) => a.id));
+    let fetched = false;
+    if (!quiet) {
+      setRefreshing(true);
+      setRefreshError("");
+      setRefreshNote("");
+    }
+    try {
+      await fetchLiveNews(username, force);
+      fetched = true;
+    } catch (e: any) {
+      if (!quiet)
+        setRefreshError(
+          `Couldn't fetch new stories: ${e?.message || "the backend didn't respond"}.`,
+        );
+    } finally {
+      // Always reload what's saved, even if fetching new stories failed
+      const data = await loadFeed();
+      const added = data.filter((a) => !before.has(a.id)).length;
+      if (fetched && !quiet) {
+        setCategory("For you"); // so the new stories aren't hidden behind a topic chip
+        setRefreshNote(
+          added > 0
+            ? `${added} new ${added === 1 ? "story" : "stories"} added to your feed.`
+            : "You're up to date. No new stories for your topics right now.",
+        );
+      }
+      refreshingRef.current = false;
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }
+
+  // Hide the "new stories" note after a few seconds
+  useEffect(() => {
+    if (!refreshNote) return;
+    const t = setTimeout(() => setRefreshNote(""), 8000);
+    return () => clearTimeout(t);
+  }, [refreshNote]);
+
   // Reload every time Home is shown, so changes made in Preferences
   // (topics, muted keywords) show up straight away. If the topics
   // changed, also fetch fresh news for the new topics.
+  // While Home is open it also keeps itself up to date:
+  //   • every minute  → re-read the saved feed (cheap, no API credits)
+  //   • every 30 min  → ask the server for new stories (uses its cache)
   useFocusEffect(
     useCallback(() => {
       const topicsChanged =
@@ -85,10 +144,24 @@ export function DashboardScreen({ navigation }: any) {
       lastTopicsKey.current = topicsKey;
       if (topicsChanged) {
         setCategory("For you");
-        onRefresh();
+        onRefresh(true);
       } else {
         loadFeed().finally(() => setLoading(false));
       }
+
+      const feedTimer = setInterval(() => {
+        if (!refreshingRef.current) loadFeed();
+      }, 60 * 1000);
+      const liveTimer = setInterval(
+        () => onRefresh(false, true),
+        30 * 60 * 1000,
+      );
+      const clockTimer = setInterval(() => setClock((c) => c + 1), 30 * 1000);
+      return () => {
+        clearInterval(feedTimer);
+        clearInterval(liveTimer);
+        clearInterval(clockTimer);
+      };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loadFeed, topicsKey]),
   );
@@ -97,25 +170,12 @@ export function DashboardScreen({ navigation }: any) {
   useEffect(() => {
     if (!loading && !hasAutoFetched && articles.length === 0 && !error) {
       setHasAutoFetched(true);
-      onRefresh();
+      onRefresh(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, articles.length, hasAutoFetched]);
 
-  async function onRefresh() {
-    if (!username) return;
-    setRefreshing(true);
-    setError("");
-    try {
-      await fetchLiveNews(username);
-      await loadFeed();
-    } catch {
-      setError("Couldn't refresh. Check that the backend is running.");
-    } finally {
-      setRefreshing(false);
-      setLoading(false);
-    }
-  }
+  const updatedLabel = lastUpdated ? `Updated ${timeAgo(lastUpdated)}` : "";
 
   // ---- Mood gently re-orders the feed (nothing is hidden) ----
   const ordered = useMemo(() => orderByMood(articles, mood), [articles, mood]);
@@ -208,8 +268,11 @@ export function DashboardScreen({ navigation }: any) {
           </Serif>
         </View>
         <View style={styles.sectionActions}>
+          {updatedLabel && !refreshing ? (
+            <Sans style={styles.updated}>{updatedLabel}</Sans>
+          ) : null}
           <Pressable
-            onPress={onRefresh}
+            onPress={() => onRefresh(true)}
             disabled={refreshing}
             style={styles.linkBtn}
             accessibilityLabel="Refresh news"
@@ -241,10 +304,32 @@ export function DashboardScreen({ navigation }: any) {
         </View>
       </View>
 
+      {refreshError && !refreshing ? (
+        <View style={styles.refreshError}>
+          <Feather name="alert-circle" size={15} color={colors.danger} />
+          <Sans style={styles.refreshErrorText}>
+            {refreshError} Showing your saved stories.
+          </Sans>
+          <Pressable
+            onPress={() => setRefreshError("")}
+            accessibilityLabel="Dismiss"
+          >
+            <Feather name="x" size={15} color={colors.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {refreshNote && !refreshing ? (
+        <View style={styles.refreshNote}>
+          <Feather name="check-circle" size={15} color={colors.primaryDark} />
+          <Sans style={styles.refreshNoteText}>{refreshNote}</Sans>
+        </View>
+      ) : null}
+
       {refreshing ? (
         <Sans style={styles.note}>
-          Fetching the latest articles and scoring sentiment. This can take up
-          to a minute the first time.
+          Fetching the latest articles and scoring their sentiment. This can
+          take up to a minute when the AI model is busy.
         </Sans>
       ) : null}
 
@@ -299,6 +384,7 @@ export function DashboardScreen({ navigation }: any) {
 
   return (
     <PageShell>
+      {/* Greeting */}
       <View style={styles.greetingRow}>
         <View style={{ flexShrink: 1 }}>
           <View style={styles.eyebrowRow}>
@@ -341,9 +427,9 @@ export function DashboardScreen({ navigation }: any) {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
       ) : error && articles.length === 0 ? (
-        <View style={styles.errorBox}>
+        <View style={[styles.errorBox]}>
           <Sans style={styles.errorText}>{error}</Sans>
-          <Pressable onPress={onRefresh} style={styles.errorBtn}>
+          <Pressable onPress={() => onRefresh(true)} style={styles.errorBtn}>
             <Sans style={{ color: colors.white, fontWeight: "700" }}>
               Try again
             </Sans>
@@ -378,6 +464,7 @@ export function DashboardScreen({ navigation }: any) {
   );
 }
 
+// Big hero card with the day's featured positive story
 function FeaturedStory({
   article,
   onPress,
@@ -396,6 +483,7 @@ function FeaturedStory({
         seed={article.category || article.title}
         style={StyleSheet.absoluteFill}
       />
+      {/* dark green fade so white text stays readable */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <svg
           width="100%"
@@ -566,6 +654,36 @@ const styles = StyleSheet.create({
   },
   linkBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   linkBtnText: { fontSize: 14, fontWeight: "600", color: colors.primaryDark },
+  updated: { fontSize: 12.5, color: colors.textMuted },
+  refreshError: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.peachSoft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: -8,
+    marginBottom: 18,
+  },
+  refreshErrorText: { flex: 1, fontSize: 13, color: "#7A4718" },
+  refreshNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: -8,
+    marginBottom: 18,
+  },
+  refreshNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#4F5A1F",
+    fontWeight: "600",
+  },
   note: {
     fontSize: 13,
     color: colors.textMuted,
@@ -602,3 +720,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
 });
+
+// "just now", "3 min ago", "2 h ago"
+function timeAgo(ts: number) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  return `${Math.floor(mins / 60)} h ago`;
+}
