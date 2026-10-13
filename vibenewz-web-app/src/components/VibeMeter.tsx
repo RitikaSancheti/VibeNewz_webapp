@@ -58,25 +58,36 @@ export function VibeMeter({ articles }: { articles: NewsArticle[] }) {
       <View
         style={[styles.meterArea, stacked && { width: "100%", marginTop: 20 }]}
       >
-        <View style={styles.labels}>
-          <Sans style={styles.edgeLabel}>Grounded</Sans>
+                <View style={styles.labels}>
           <Sans style={styles.valueLabel}>{v.positive}% uplifting</Sans>
-          <Sans style={styles.edgeLabel}>Bright</Sans>
         </View>
 
         <View
-          style={styles.meter}
-          accessibilityRole="progressbar"
-          accessibilityLabel="Share of uplifting stories in your feed"
-          accessibilityValue={{ min: 0, max: 100, now: v.positive }}
+          style={styles.bar}
+          accessibilityRole="image"
+          accessibilityLabel={`Your feed: ${v.positive}% positive, ${v.neutral}% neutral, ${v.deeper}% deeper reads`}
         >
-          <View style={styles.track}>
-            <View style={[styles.fill, { width: `${v.positive}%` }]} />
-          </View>
-          {v.total ? (
-            <View style={[styles.marker, { left: `${v.positive}%` }]} />
-          ) : null}
+          <View
+            style={[
+              styles.segment,
+              { width: `${v.positive}%`, backgroundColor: colors.primary },
+            ]}
+          />
+          <View
+            style={[
+              styles.segment,
+              { width: `${v.neutral}%`, backgroundColor: colors.neutralGreen },
+            ]}
+          />
+          <View
+            style={[
+              styles.segment,
+              { width: `${v.deeper}%`, backgroundColor: colors.peach },
+            ]}
+          />
         </View>
+
+       
 
         <View style={styles.breakdown}>
           <Legend color={colors.primary} label="Positive" value={v.positive} />
@@ -144,6 +155,17 @@ const styles = StyleSheet.create({
   },
   edgeLabel: { fontSize: 13, color: colors.textBody },
   valueLabel: { fontSize: 13.5, fontWeight: "700", color: colors.primaryDark },
+    bar: {
+    flexDirection: "row",
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.primarySoft,
+    overflow: "hidden",
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  segment: { height: "100%" },
+
   meter: { height: 28, justifyContent: "center" },
   track: {
     height: 5,
