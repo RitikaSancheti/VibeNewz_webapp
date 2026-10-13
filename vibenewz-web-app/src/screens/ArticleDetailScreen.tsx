@@ -15,9 +15,11 @@ import { useWellbeing } from "../context/WellbeingContext";
 import { PageShell } from "../components/PageShell";
 import { StoryImage } from "../components/StoryImage";
 import { SentimentBadge } from "../components/SentimentBadge";
+import { ListenButton } from "../audio/ListenButton";
 import { Sans, Serif } from "../components/Typography";
 import { colors, radius } from "../theme";
 import { readMinutes, titleCase } from "../utils/news";
+import { stopSpeaking } from "../audio/speech";
 
 export function ArticleDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
@@ -42,7 +44,10 @@ export function ArticleDetailScreen({ route, navigation }: any) {
     useCallback(() => {
       if (!article) return;
       const openedAt = Date.now();
-      return () => recordRef.current(article, (Date.now() - openedAt) / 1000);
+      return () => {
+        recordRef.current(article, (Date.now() - openedAt) / 1000);
+        stopSpeaking(); // don't keep talking after leaving the story
+      };
     }, [article]),
   );
 
@@ -122,6 +127,7 @@ export function ArticleDetailScreen({ route, navigation }: any) {
                   />
                 </Pressable>
               ) : null}
+              <ListenButton article={article} variant="pill" />
               <Pressable
                 onPress={() => toggleBookmark(article)}
                 style={[

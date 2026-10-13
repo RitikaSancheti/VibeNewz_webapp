@@ -218,6 +218,14 @@ export function DashboardScreen({ navigation }: any) {
       ? rest
       : rest.filter((a) => (a.category || "General") === category);
   const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
+  // Audio player's Previous/Next order: featured story first, then the cards
+  const audioPlaylist = useMemo(
+    () =>
+      featured && !visible.some((a) => a.id === featured.id)
+        ? [featured, ...visible]
+        : visible,
+    [featured, visible],
+  );
 
   const columns = gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
   const gap = 20;
@@ -374,6 +382,7 @@ export function DashboardScreen({ navigation }: any) {
               key={a.id}
               article={a}
               width={cardWidth}
+              playlist={audioPlaylist}
               onPress={() => openArticle(a.id)}
             />
           ))
