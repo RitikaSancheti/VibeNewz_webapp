@@ -1,3 +1,5 @@
+// Wraps every signed-in page: cream background, the top nav, a centred
+// content column and the little "?" help button.
 import { ReactNode, useState } from "react";
 import {
   View,
@@ -7,32 +9,43 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { TopNav } from "./TopNav";
+import { TopNav, BottomNav } from "./TopNav";
 import { Sans, Serif, Eyebrow } from "./Typography";
-import { colors, shadows, NAV_HEIGHT, CONTENT_MAX_WIDTH } from "../theme";
+import {
+  colors,
+  shadows,
+  NAV_HEIGHT,
+  BOTTOM_NAV_HEIGHT,
+  MOBILE_MAX_WIDTH,
+  CONTENT_MAX_WIDTH,
+} from "../theme";
 
 export function PageShell({ children }: { children: ReactNode }) {
   const { width } = useWindowDimensions();
-  const gutter = width < 700 ? 16 : width < 1100 ? 32 : 56;
+  const mobile = width < MOBILE_MAX_WIDTH;
+  const gutter = mobile ? 16 : width < 1100 ? 32 : 56;
 
   return (
     <View style={styles.page}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingTop: NAV_HEIGHT + 34,
-          paddingBottom: 96,
+          paddingTop: NAV_HEIGHT + (mobile ? 24 : 34),
+          // on phones, leave room so the last card isn't hidden behind the bottom bar
+          paddingBottom: mobile ? BOTTOM_NAV_HEIGHT + 48 : 96,
           paddingHorizontal: gutter,
         }}
       >
         <View style={styles.column}>{children}</View>
       </ScrollView>
       <TopNav />
-      <HelpButton />
+      {mobile ? <BottomNav /> : null}
+      <HelpButton raised={mobile} />
     </View>
   );
 }
 
+// Page title block used at the top of each page
 export function PageHeader({
   icon,
   eyebrow,
@@ -70,6 +83,7 @@ export function PageHeader({
   );
 }
 
+// Small rounded outline label, e.g. "1 saved"
 export function OutlinePill({ label }: { label: string }) {
   return (
     <View style={styles.outlinePill}>
@@ -78,12 +92,14 @@ export function OutlinePill({ label }: { label: string }) {
   );
 }
 
-function HelpButton() {
+// raised = sit above the phone bottom bar
+function HelpButton({ raised = false }: { raised?: boolean }) {
   const [open, setOpen] = useState(false);
+  const lift = raised ? BOTTOM_NAV_HEIGHT : 0;
   return (
     <>
       {open ? (
-        <View style={[styles.helpCard, shadows.raised]}>
+        <View style={[styles.helpCard, shadows.raised, { bottom: 76 + lift }]}>
           <View
             style={{
               flexDirection: "row",
@@ -101,14 +117,14 @@ function HelpButton() {
             </Pressable>
           </View>
           <Sans style={styles.helpText}>
-            • Slide “Set today’s vibe” to choose how uplifting your feed is.
+            • “Today’s vibe” shows how uplifting the stories in your feed are.
           </Sans>
           <Sans style={styles.helpText}>
             • Check in with your mood — it gently shapes what you see.
           </Sans>
           <Sans style={styles.helpText}>
-            • Save stories with the bookmark button, explore regions on the
-            Global map.
+            • Bookmark or like stories. Both live under Bookmarks. Spin the
+            globe on Global map.
           </Sans>
           <Sans style={styles.helpText}>
             • My wellbeing shows your reading balance and app analytics.
@@ -116,7 +132,7 @@ function HelpButton() {
         </View>
       ) : null}
       <Pressable
-        style={[styles.helpBtn, shadows.pill]}
+        style={[styles.helpBtn, shadows.pill, { bottom: 22 + lift }]}
         onPress={() => setOpen((o) => !o)}
         accessibilityLabel="Help"
       >

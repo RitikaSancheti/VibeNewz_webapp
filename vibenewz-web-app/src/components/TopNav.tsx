@@ -1,3 +1,5 @@
+// The top navigation bar: logo, the four main pages, search and the
+// profile menu. On phones the four pages move to <BottomNav /> instead.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -9,7 +11,14 @@ import {
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { colors, fonts, shadows, NAV_HEIGHT } from "../theme";
+import {
+  colors,
+  fonts,
+  shadows,
+  NAV_HEIGHT,
+  BOTTOM_NAV_HEIGHT,
+  MOBILE_MAX_WIDTH,
+} from "../theme";
 import { Sans, Serif } from "./Typography";
 import { SentimentBadge } from "./SentimentBadge";
 import { useAuth } from "../context/AuthContext";
@@ -57,8 +66,8 @@ export function TopNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const compact = width < 980;
-  const tiny = width < 560;
+  const compact = width < 980; // hide nav labels, show icons only
+  const mobile = width < MOBILE_MAX_WIDTH; // page links move to the bottom bar
 
   const initials = initialsFor(user?.first_name, user?.last_name, username);
   const fullName =
@@ -73,49 +82,51 @@ export function TopNav() {
 
   return (
     <View style={styles.bar}>
-      <View style={[styles.inner, tiny && { paddingHorizontal: 16 }]}>
+      <View style={[styles.inner, mobile && { paddingHorizontal: 16 }]}>
         <Pressable
           onPress={() => go("Home")}
           accessibilityLabel="VibeNewz home"
         >
-          <Logo showText={!tiny} />
+          <Logo showText />
         </Pressable>
 
-        <View style={[styles.links, compact && { gap: 2 }]}>
-          {NAV_ITEMS.map((item) => {
-            const active = route.name === item.route;
-            return (
-              <Pressable
-                key={item.route}
-                onPress={() => go(item.route)}
-                accessibilityLabel={item.label}
-                style={({ hovered }: any) => [
-                  styles.link,
-                  compact && { paddingHorizontal: 12 },
-                  hovered &&
-                    !active && { backgroundColor: "rgba(255,232,161,0.45)" },
-                  active && [styles.linkActive, shadows.pill],
-                ]}
-              >
-                <Feather
-                  name={item.icon}
-                  size={16}
-                  color={active ? colors.primaryDark : colors.textBody}
-                />
-                {!compact ? (
-                  <Sans
-                    style={[
-                      styles.linkText,
-                      active && { color: colors.primaryDark },
-                    ]}
-                  >
-                    {item.label}
-                  </Sans>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
+        {mobile ? null : (
+          <View style={[styles.links, compact && { gap: 2 }]}>
+            {NAV_ITEMS.map((item) => {
+              const active = route.name === item.route;
+              return (
+                <Pressable
+                  key={item.route}
+                  onPress={() => go(item.route)}
+                  accessibilityLabel={item.label}
+                  style={({ hovered }: any) => [
+                    styles.link,
+                    compact && { paddingHorizontal: 12 },
+                    hovered &&
+                      !active && { backgroundColor: "rgba(255,232,161,0.45)" },
+                    active && [styles.linkActive, shadows.pill],
+                  ]}
+                >
+                  <Feather
+                    name={item.icon}
+                    size={16}
+                    color={active ? colors.primaryDark : colors.textBody}
+                  />
+                  {!compact ? (
+                    <Sans
+                      style={[
+                        styles.linkText,
+                        active && { color: colors.primaryDark },
+                      ]}
+                    >
+                      {item.label}
+                    </Sans>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <View style={styles.right}>
           <Pressable
@@ -141,6 +152,7 @@ export function TopNav() {
         </View>
       </View>
 
+      {/* Click anywhere outside to close a dropdown */}
       {menuOpen || searchOpen ? (
         <Pressable
           style={styles.backdrop}
@@ -186,7 +198,6 @@ export function TopNav() {
             </View>
             <Feather name="chevron-right" size={17} color={colors.text} />
           </Pressable>
-
           <Pressable
             style={({ hovered }: any) => [
               styles.menuRow,
@@ -202,7 +213,6 @@ export function TopNav() {
             <Feather name="chevron-right" size={17} color={colors.text} />
           </Pressable>
           <View style={styles.divider} />
-
           <Pressable
             style={({ hovered }: any) => [
               styles.menuRow,
@@ -225,6 +235,7 @@ export function TopNav() {
 
       {searchOpen ? (
         <SearchPanel
+          mobile={mobile}
           onOpen={(id) => {
             setSearchOpen(false);
             navigation.navigate("ArticleDetail", { id });
@@ -235,8 +246,60 @@ export function TopNav() {
   );
 }
 
-// Search dropdown: searches the user's feed by title / description
-function SearchPanel({ onOpen }: { onOpen: (id: number) => void }) {
+// ---- Phone-only bottom tab bar -------------------------------------------
+const SHORT_LABELS: Record<string, string> = {
+  Home: "Home",
+  GlobalMap: "Map",
+  Bookmarks: "Saved",
+  Wellbeing: "Wellbeing",
+};
+
+export function BottomNav() {
+  const navigation = useNavigation<any>();
+  const route = useRoute();
+
+  return (
+    <View style={styles.bottomBar} accessibilityRole="tablist">
+      {NAV_ITEMS.map((item) => {
+        const active = route.name === item.route;
+        return (
+          <Pressable
+            key={item.route}
+            onPress={() => navigation.navigate(item.route)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={item.label}
+            style={styles.bottomItem}
+          >
+            <View
+              style={[styles.bottomIcon, active && styles.bottomIconActive]}
+            >
+              <Feather
+                name={item.icon}
+                size={19}
+                color={active ? colors.primaryDark : colors.textBody}
+              />
+            </View>
+            <Sans
+              style={[styles.bottomLabel, active && styles.bottomLabelActive]}
+            >
+              {SHORT_LABELS[item.route]}
+            </Sans>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+// ---- Search dropdown: searches the user's feed by title / description ----
+function SearchPanel({
+  onOpen,
+  mobile,
+}: {
+  onOpen: (id: number) => void;
+  mobile?: boolean;
+}) {
   const { username } = useAuth();
   const [query, setQuery] = useState("");
   const [articles, setArticles] = useState<NewsArticle[] | null>(null);
@@ -263,7 +326,14 @@ function SearchPanel({ onOpen }: { onOpen: (id: number) => void }) {
   }, [query, articles]);
 
   return (
-    <View style={[styles.dropdown, styles.searchPanel, shadows.raised]}>
+    <View
+      style={[
+        styles.dropdown,
+        styles.searchPanel,
+        mobile && styles.searchPanelMobile,
+        shadows.raised,
+      ]}
+    >
       <View style={styles.searchRow}>
         <Feather name="search" size={17} color={colors.textMuted} />
         <TextInput
@@ -403,6 +473,12 @@ const styles = StyleSheet.create({
   menuRowTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   menuRowSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   searchPanel: { width: 420, maxWidth: "92%" as any, right: 80 },
+  searchPanelMobile: {
+    left: 12,
+    right: 12,
+    width: "auto" as any,
+    maxWidth: "none" as any,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -429,4 +505,36 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   searchTitle: { flex: 1, fontSize: 14, color: colors.text },
+  bottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: BOTTOM_NAV_HEIGHT,
+    paddingTop: 6,
+    paddingBottom: "max(6px, env(safe-area-inset-bottom))", // room for the iPhone home bar
+    flexDirection: "row",
+    zIndex: 90,
+    backgroundColor: "rgba(255, 253, 247, 0.94)",
+    backdropFilter: "blur(14px)",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    boxShadow: "0 -8px 24px rgba(125, 105, 40, 0.06)",
+  } as any,
+  bottomItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  bottomIcon: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bottomIconActive: { backgroundColor: colors.butter },
+  bottomLabel: { fontSize: 11.5, fontWeight: "500", color: colors.textBody },
+  bottomLabelActive: { color: colors.primaryDark, fontWeight: "700" },
 });
