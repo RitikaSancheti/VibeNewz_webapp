@@ -20,7 +20,7 @@ import { Globe, GlobePin } from "../components/Globe";
 import { StoryImage } from "../components/StoryImage";
 import { SentimentBadge } from "../components/SentimentBadge";
 import { Sans, Serif } from "../components/Typography";
-import { colors, radius, shadows } from "../theme";
+import { colors, radius, shadows, MOBILE_MAX_WIDTH } from "../theme";
 import { titleCase } from "../utils/news";
 import {
   REGIONS,
@@ -141,6 +141,7 @@ export function GlobalMapScreen({ navigation }: any) {
   }
 
   const stacked = width < 1050;
+  const mobile = width < MOBILE_MAX_WIDTH; // phone: story card shows image beside text
   const globeSize = Math.max(
     260,
     Math.min(500, width - (width < 700 ? 70 : 200)),
@@ -236,7 +237,84 @@ export function GlobalMapScreen({ navigation }: any) {
             <ActivityIndicator color={colors.primary} />
           ) : error ? (
             <Sans style={{ color: colors.danger }}>{error}</Sans>
+          ) : story && mobile ? (
+            // ---- Phone: image on the left, story on the right ----
+            <Pressable
+              onPress={() =>
+                navigation.navigate("ArticleDetail", { id: story.id })
+              }
+              style={[styles.storyCard, styles.rowCard, shadows.raised]}
+            >
+              <StoryImage
+                uri={story.image_url}
+                seed={story.category || story.title}
+                style={styles.rowImage}
+              />
+              <View style={styles.rowBody}>
+                <View style={styles.rowMeta}>
+                  <SentimentBadge sentiment={story.sentiment} size="sm" />
+                  <Feather name="globe" size={12} color={colors.textMuted} />
+                  <Sans style={styles.rowMetaText} numberOfLines={1}>
+                    {titleCase(story.country)}
+                  </Sans>
+                </View>
+                <Serif style={styles.rowTitle} numberOfLines={3}>
+                  {story.title}
+                </Serif>
+                {story.description ? (
+                  <Sans style={styles.rowDesc} numberOfLines={2}>
+                    {story.description}
+                  </Sans>
+                ) : null}
+                <View style={styles.rowActions}>
+                  <View style={styles.rowExplore}>
+                    <Sans style={styles.rowExploreText}>Read story</Sans>
+                    <Feather
+                      name="chevron-right"
+                      size={14}
+                      color={colors.primaryDark}
+                    />
+                  </View>
+                  {stories.length > 1 ? (
+                    <View style={[styles.pager, { gap: 4 }]}>
+                      <Pressable
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          step(-1);
+                        }}
+                        style={[styles.pagerBtn, styles.pagerBtnSmall]}
+                        accessibilityLabel="Previous story"
+                      >
+                        <Feather
+                          name="chevron-left"
+                          size={15}
+                          color={colors.text}
+                        />
+                      </Pressable>
+                      <Sans style={styles.pagerText}>
+                        {index + 1}/{stories.length}
+                      </Sans>
+                      <Pressable
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          step(1);
+                        }}
+                        style={[styles.pagerBtn, styles.pagerBtnSmall]}
+                        accessibilityLabel="Next story"
+                      >
+                        <Feather
+                          name="chevron-right"
+                          size={15}
+                          color={colors.text}
+                        />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            </Pressable>
           ) : story ? (
+            // ---- Desktop: image on top (unchanged) ----
             <View style={[styles.storyCard, shadows.raised]}>
               <StoryImage
                 uri={story.image_url}
@@ -439,4 +517,42 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pagerText: { fontSize: 12.5, color: colors.textMuted },
+
+  // phone row layout (image beside text)
+  rowCard: {
+    flexDirection: "row",
+    width: "100%",
+    minHeight: 160,
+    borderRadius: 16,
+  },
+  rowImage: { width: 118, alignSelf: "stretch" },
+  rowBody: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 12 },
+  rowMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  rowMetaText: { fontSize: 11.5, color: colors.textMuted, flexShrink: 1 },
+  rowTitle: { fontSize: 17.5, lineHeight: 21, marginBottom: 6 },
+  rowDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted,
+    marginBottom: 10,
+  },
+  rowActions: {
+    marginTop: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  rowExplore: { flexDirection: "row", alignItems: "center", gap: 2 },
+  rowExploreText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  pagerBtnSmall: { width: 26, height: 26, borderRadius: 13 },
 });

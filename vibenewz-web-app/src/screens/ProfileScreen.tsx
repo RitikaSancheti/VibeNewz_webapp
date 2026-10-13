@@ -1,3 +1,8 @@
+// ============================================================
+// ProfileScreen.tsx — now "Preferences" (opened from the avatar menu).
+// Same features as before: account info, topics, muted keywords, log out.
+// ============================================================
+
 import { useEffect, useState, ReactNode, ComponentProps } from "react";
 import {
   View,
@@ -108,6 +113,7 @@ export function ProfileScreen() {
   const { username, user, updateUser, logout } = useAuth();
   const { width } = useWindowDimensions();
 
+  // ── Account info ──
   const [firstName, setFirstName] = useState(user?.first_name || "");
   const [lastName, setLastName] = useState(user?.last_name || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -116,6 +122,7 @@ export function ProfileScreen() {
     "" | "saving" | "saved" | "error"
   >("");
 
+  // ── Topics ──
   const [selectedTopics, setSelectedTopics] = useState<string[]>(
     user?.topics || [],
   );
@@ -123,6 +130,7 @@ export function ProfileScreen() {
     "" | "saving" | "saved" | "error"
   >("");
 
+  // ── Muted keywords ──
   const [keywords, setKeywords] = useState<MutedKeyword[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
 
@@ -209,8 +217,8 @@ export function ProfileScreen() {
         subtitle={`Signed in as @${username}. Tune what reaches you, and what doesn’t.`}
       />
 
-      <View style={[styles.row, !twoCol && { flexDirection: "column" }]}>
-        <View style={{ flex: 1, gap: 20 }}>
+      <View style={[styles.row, !twoCol && styles.rowStacked]}>
+        <View style={twoCol ? { flex: 1, gap: 20 } : styles.colStacked}>
           <Card
             eyebrow="Account"
             title="About you"
@@ -313,7 +321,7 @@ export function ProfileScreen() {
           </Card>
         </View>
 
-        <View style={{ flex: twoCol ? 0.8 : 1, gap: 20 }}>
+        <View style={twoCol ? { flex: 0.8, gap: 20 } : styles.colStacked}>
           <Card
             eyebrow="Boundaries"
             title="Muted keywords"
@@ -377,6 +385,11 @@ export function ProfileScreen() {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 20, alignItems: "flex-start" },
+  // Narrow screens: plain full-width blocks stacked top to bottom.
+  // (flex: 1 in a vertical stack lets Safari squash a column shorter than
+  // its content, which made the cards overlap.)
+  rowStacked: { flexDirection: "column", alignItems: "stretch" },
+  colStacked: { width: "100%", gap: 20 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
