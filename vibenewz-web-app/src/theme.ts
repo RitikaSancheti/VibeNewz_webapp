@@ -48,6 +48,14 @@ export const shadows = {
 export const radius = { sm: 12, md: 18, lg: 24, xl: 30, pill: 999 };
 
 export const NAV_HEIGHT = 78;
+
+export const BOTTOM_NAV_HEIGHT = 66; // phone-only bottom tab bar
+
+// Screens narrower than this get the phone layout (bottom tab bar,
+// side-by-side story cards, wellbeing cards at the bottom of Home).
+// Wider screens keep the desktop layout exactly as it is.
+export const MOBILE_MAX_WIDTH = 700;
+
 export const CONTENT_MAX_WIDTH = 1420;
 
 export function sentimentColor(sentiment: string): string {

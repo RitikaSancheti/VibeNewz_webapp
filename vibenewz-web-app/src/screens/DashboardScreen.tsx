@@ -32,7 +32,7 @@ import {
   MutedKeywordsCard,
 } from "../components/WellbeingCards";
 import { Sans, Serif, Eyebrow } from "../components/Typography";
-import { colors, radius, shadows } from "../theme";
+import { colors, radius, shadows, MOBILE_MAX_WIDTH } from "../theme";
 import { greetingForNow } from "../utils/news";
 
 const PAGE_SIZE = 6;
@@ -57,6 +57,7 @@ export function DashboardScreen({ navigation }: any) {
   const [gridWidth, setGridWidth] = useState(0);
 
   const wide = width >= 1180;
+  const mobile = width < MOBILE_MAX_WIDTH; // phone layout
   const topics = user?.topics || [];
   const topicsKey = topics.join("|");
   const lastTopicsKey = useRef<string | null>(null);
@@ -219,8 +220,9 @@ export function DashboardScreen({ navigation }: any) {
       : rest.filter((a) => (a.category || "General") === category);
   const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
 
-  const columns = gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
-  const gap = 20;
+  // Phones: one story per row (image beside text). Desktop: 2–3 columns.
+  const columns = mobile ? 1 : gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
+  const gap = mobile ? 12 : 20;
   const cardWidth = gridWidth
     ? (gridWidth - gap * (columns - 1)) / columns
     : undefined;
@@ -447,6 +449,19 @@ export function DashboardScreen({ navigation }: any) {
             {storiesSection}
           </View>
           {sidebar}
+        </View>
+      ) : mobile ? (
+        // Phone: stories first, then the wellbeing cards at the very bottom
+        // (they stay below the stories even after "See all stories").
+        <View>
+          {featured ? (
+            <FeaturedStory
+              article={featured}
+              onPress={() => openArticle(featured.id)}
+            />
+          ) : null}
+          {storiesSection}
+          <View style={{ marginTop: 40 }}>{sidebar}</View>
         </View>
       ) : (
         <View>
