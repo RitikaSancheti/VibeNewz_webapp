@@ -313,29 +313,35 @@ async function buildFilteredFeed(user, sentiment) {
 
   // The main feed is balanced to be mostly uplifting. (Asking for one
   // sentiment, e.g. /feed/NEGATIVE, still returns all of that sentiment.)
-  if (!sentiment) result = balanceFeed(result);
+  if (!sentiment) result = balanceFeed(result, user.preferred_sentiment);
 
   return result;
 }
+// For each preference: which sentiment leads the feed, which comes second,
+// and which comes third.
+const FEED_ORDER = {
+  POSITIVE: ["POSITIVE", "NEUTRAL", "NEGATIVE"],
+  NEUTRAL: ["NEUTRAL", "POSITIVE", "NEGATIVE"],
+  NEGATIVE: ["NEGATIVE", "NEUTRAL", "POSITIVE"],
+};
 
-// Keeps every positive story, then adds a smaller helping of neutral
-// and heavier ones — roughly 70% positive / 20% neutral / 10% deeper
-// reads — so the feed stays hopeful without hiding the world entirely.
-function balanceFeed(articles) {
-  const positive = articles.filter((a) => a.sentiment === "POSITIVE");
-  const neutral = articles.filter((a) => a.sentiment === "NEUTRAL");
-  const negative = articles.filter((a) => a.sentiment === "NEGATIVE");
+// Keeps every story of the preferred sentiment (default POSITIVE), then adds
+// a smaller helping of the other two — roughly 70% / 20% / 10% — so the feed
+// leans the way the user chose without hiding the world entirely.
+function balanceFeed(articles, preferred) {
+  const [first, second, third] = FEED_ORDER[preferred] || FEED_ORDER.POSITIVE;
+  const pick = (s) => articles.filter((a) => a.sentiment === s);
 
-  const p = positive.length;
-  const neutralCap = Math.max(3, Math.round(p * 0.3));
-  const negativeCap = Math.max(1, Math.round(p * 0.15));
+  const main = pick(first);
+  const secondCap = Math.max(3, Math.round(main.length * 0.3));
+  const thirdCap = Math.max(1, Math.round(main.length * 0.15));
 
   const byNewest = (a, b) =>
     new Date(b.published_at) - new Date(a.published_at);
   return [
-    ...positive,
-    ...neutral.slice(0, neutralCap),
-    ...negative.slice(0, negativeCap),
+    ...main,
+    ...pick(second).slice(0, secondCap),
+    ...pick(third).slice(0, thirdCap),
   ].sort(byNewest);
 }
 

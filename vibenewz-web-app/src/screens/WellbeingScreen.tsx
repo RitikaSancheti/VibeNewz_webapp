@@ -18,6 +18,7 @@ import { PageShell, PageHeader } from "../components/PageShell";
 import {
   MoodCheckInCard,
   ReadingBalanceCard,
+  FeedPreferenceCard,
 } from "../components/WellbeingCards";
 import { Sans, Serif, Eyebrow } from "../components/Typography";
 import { MOODS, useWellbeing } from "../context/WellbeingContext";
@@ -84,6 +85,10 @@ export function WellbeingScreen() {
         </View>
       ) : null}
 
+      <View style={{ marginTop: 20 }}>
+        <FeedPreferenceCard />
+      </View>
+      
       <View style={{ marginTop: 64, marginBottom: 26 }}>
         <Eyebrow style={{ marginBottom: 12 }}>App analytics</Eyebrow>
         <Serif style={[styles.sectionTitle, width < 700 && { fontSize: 34 }]}>

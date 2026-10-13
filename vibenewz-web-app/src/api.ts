@@ -215,3 +215,13 @@ export function updateTopics(
     body: JSON.stringify({ topics }),
   });
 }
+
+export function updatePreferredSentiment(
+  username: string,
+  sentiment: Sentiment,
+): Promise<AppUser> {
+  return request(`/users/${username}/sentiment`, {
+    method: "PUT",
+    body: JSON.stringify({ sentiment }),
+  });
+}

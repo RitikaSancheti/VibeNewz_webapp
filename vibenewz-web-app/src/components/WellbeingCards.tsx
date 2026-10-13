@@ -7,6 +7,10 @@ import {
   useWellbeing,
   weeklyBalance,
 } from "../context/WellbeingContext";
+import { useAuth } from "../context/AuthContext";
+import { Sentiment, updatePreferredSentiment } from "../api";
+
+import {useState} from "react";
 
 function CardHeader({
   eyebrow,
@@ -122,6 +126,114 @@ export function ReadingBalanceCard() {
       </View>
       <View style={[styles.callout, { marginTop: 24 }]}>
         <Sans style={styles.calloutText}>{b.insight}</Sans>
+      </View>
+    </View>
+  );
+}
+// ---- Feed preference slider (My wellbeing) ------------------------------
+// Three stops, left to right. The stop you pick leads your feed; the other
+// two still appear in smaller amounts (the backend decides the mix).
+const FEED_STOPS: { key: Sentiment; label: string; message: string }[] = [
+  {
+    key: "POSITIVE",
+    label: "Positive",
+    message: "Uplifting stories lead your feed, with a few others mixed in.",
+  },
+  {
+    key: "NEUTRAL",
+    label: "Neutral",
+    message: "Balanced, factual stories lead your feed, with a few others mixed in.",
+  },
+  {
+    key: "NEGATIVE",
+    label: "Deeper reads",
+    message: "Heavier stories lead your feed, with a few others mixed in.",
+  },
+];
+
+export function FeedPreferenceCard() {
+  const { username, user, updateUser } = useAuth();
+  const [status, setStatus] = useState<"" | "saving" | "saved" | "error">("");
+
+  const current = user?.preferred_sentiment || "POSITIVE";
+  const index = Math.max(
+    0,
+    FEED_STOPS.findIndex((s) => s.key === current),
+  );
+
+  async function choose(sentiment: Sentiment) {
+    if (!username) return;
+    setStatus("saving");
+    try {
+      // Save on the server, then update the copy of the user kept in the app
+      // so the slider (and the Home feed) see the new choice straight away.
+      const updated = await updatePreferredSentiment(username, sentiment);
+      await updateUser(updated);
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <View style={[styles.card, shadows.card]}>
+      <CardHeader
+        eyebrow="Your feed"
+        title="What kind of news do you want?"
+        icon="sliders"
+      />
+      <Sans style={styles.body}>
+        Choose what leads your feed. The other kinds still show up in smaller
+        amounts, so you’re never stuck in a bubble.
+      </Sans>
+
+      <View style={styles.sliderWrap}>
+        <View style={styles.sliderTrack}>
+          <View style={[styles.sliderFill, { width: `${index * 50}%` }]} />
+        </View>
+        <View style={styles.stopsRow}>
+          {FEED_STOPS.map((s, i) => (
+            <Pressable
+              key={s.key}
+              onPress={() => choose(s.key)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: i === index }}
+              accessibilityLabel={`Show me ${s.label.toLowerCase()} stories first`}
+              style={styles.stop}
+            >
+              <View
+                style={[
+                  styles.stopDot,
+                  i <= index && styles.stopDotOn,
+                  i === index && styles.stopDotCurrent,
+                ]}
+              />
+              <Sans
+                style={[
+                  styles.stopLabel,
+                  i === index && { fontWeight: "700", color: colors.primaryDark },
+                ]}
+              >
+                {s.label}
+              </Sans>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.callout}>
+        <Ionicons
+          name="sparkles-outline"
+          size={14}
+          color={colors.primaryDark}
+        />
+        <Sans style={styles.calloutText}>
+          {status === "error"
+            ? "Couldn’t save that. Is the backend running?"
+            : status === "saved"
+              ? "Saved. Your Home feed will use this next time it loads."
+              : FEED_STOPS[index].message}
+        </Sans>
       </View>
     </View>
   );
@@ -334,5 +446,33 @@ const styles = StyleSheet.create({
     gap: 4,
     alignSelf: "flex-start",
   },
+ 
   manageText: { fontSize: 13.5, fontWeight: "600", color: colors.primaryDark },
+  sliderWrap: { marginTop: 4, marginBottom: 22 },
+  // The line runs from the centre of the first dot to the centre of the last
+  // one (each of the 3 stops takes a third of the width).
+  sliderTrack: {
+    position: "absolute",
+    top: 9,
+    left: "16.666%",
+    right: "16.666%",
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primarySoft,
+    overflow: "hidden",
+  },
+  sliderFill: { height: "100%", backgroundColor: colors.primary },
+  stopsRow: { flexDirection: "row" },
+  stop: { flex: 1, alignItems: "center", gap: 8 },
+  stopDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.surface,
+    borderWidth: 3,
+    borderColor: colors.primarySoft,
+  },
+  stopDotOn: { borderColor: colors.primary },
+  stopDotCurrent: { backgroundColor: colors.primary },
+  stopLabel: { fontSize: 13, color: colors.textBody },
 });
