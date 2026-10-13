@@ -219,6 +219,14 @@ export function DashboardScreen({ navigation }: any) {
       ? rest
       : rest.filter((a) => (a.category || "General") === category);
   const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
+  // Audio player's Previous/Next order: featured story first, then the cards
+  const audioPlaylist = useMemo(
+    () =>
+      featured && !visible.some((a) => a.id === featured.id)
+        ? [featured, ...visible]
+        : visible,
+    [featured, visible],
+  );
 
   // Phones: one story per row (image beside text). Desktop: 2–3 columns.
   const columns = mobile ? 1 : gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
@@ -376,6 +384,7 @@ export function DashboardScreen({ navigation }: any) {
               key={a.id}
               article={a}
               width={cardWidth}
+              playlist={audioPlaylist}
               onPress={() => openArticle(a.id)}
             />
           ))

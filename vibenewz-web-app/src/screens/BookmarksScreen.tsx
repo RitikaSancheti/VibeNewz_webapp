@@ -120,6 +120,7 @@ export function BookmarksScreen({ navigation, route }: any) {
               key={item.id}
               article={item}
               width={cardWidth}
+              playlist={list}
               onPress={() =>
                 navigation.navigate("ArticleDetail", { id: item.id })
               }

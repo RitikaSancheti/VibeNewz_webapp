@@ -8,6 +8,7 @@ import { colors, radius, MOBILE_MAX_WIDTH } from "../theme";
 import { Sans, Serif } from "./Typography";
 import { SentimentBadge } from "./SentimentBadge";
 import { StoryImage } from "./StoryImage";
+import { ListenButton } from "../audio/ListenButton";
 import { useBookmarks } from "../context/BookmarksContext";
 import { useWellbeing } from "../context/WellbeingContext";
 import { readMinutes, titleCase } from "../utils/news";
@@ -147,7 +148,26 @@ export function ArticleCard({ article, onPress, width }: Props) {
           <Sans style={styles.place} numberOfLines={1}>
             {titleCase(article.country) || article.source}
           </Sans>
-          {likeButton}
+          <View style={styles.footerActions}>
+            <ListenButton article={article} />
+            <Pressable
+              accessibilityLabel={liked ? "Unlike" : "Like"}
+              onPress={(e: any) => {
+                e?.stopPropagation?.();
+                toggleLike(article);
+              }}
+              style={styles.likeBtn}
+            >
+              <Feather
+                name="heart"
+                size={16}
+                color={liked ? colors.peach : colors.textMuted}
+              />
+              <Sans style={[styles.likeText, liked && { color: "#B86A22" }]}>
+                {liked ? "Liked" : "Like"}
+              </Sans>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Pressable>
@@ -213,7 +233,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  place: { fontSize: 12.5, color: colors.textMuted, flexShrink: 1 },
+  place: { fontSize: 13, color: colors.textMuted, flexShrink: 1 },
+  footerActions: { flexDirection: "row", alignItems: "center", gap: 16 },
   likeBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   likeText: { fontSize: 13, color: colors.textMuted },
 

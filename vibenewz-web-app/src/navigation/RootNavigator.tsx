@@ -1,6 +1,7 @@
 // All pages share the top nav, so the bottom tab bar is gone and everything lives in one stack.
 import { NavigationContainer, LinkingOptions } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +13,8 @@ import { BookmarksScreen } from "../screens/BookmarksScreen";
 import { WellbeingScreen } from "../screens/WellbeingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ArticleDetailScreen } from "../screens/ArticleDetailScreen";
+import { AudioPlayerBar } from "../audio/AudioPlayerBar";
+import { stopSpeaking } from "../audio/speech";
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +36,11 @@ const linking: LinkingOptions<any> = {
 
 export function RootNavigator() {
   const { username, isLoading } = useAuth();
+
+  // Stop any audio when signing out
+  useEffect(() => {
+    if (!username) stopSpeaking();
+  }, [username]);
 
   if (isLoading) {
     return (
@@ -105,6 +113,7 @@ export function RootNavigator() {
           />
         )}
       </Stack.Navigator>
+      {username ? <AudioPlayerBar /> : null}
     </NavigationContainer>
   );
 }
