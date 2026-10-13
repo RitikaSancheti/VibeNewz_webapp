@@ -184,10 +184,10 @@ export async function getUser(username: string): Promise<AppUser | null> {
   }
 }
 
-export function createUser(username: string): Promise<AppUser> {
+export function createUser(username: string, authId?: string): Promise<AppUser> {
   return request("/users", {
     method: "POST",
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ username, auth_id: authId }),
   });
 }
 

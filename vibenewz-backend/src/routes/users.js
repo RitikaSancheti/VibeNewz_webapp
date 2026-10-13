@@ -35,16 +35,31 @@ router.get("/", async (req, res) => {
   res.json(data);
 });
 
+// GET /api/users/by-auth/:authId — look up a user by Supabase auth UUID.
+// Called by the client immediately after a Supabase sign-in so the app
+// can load the public.users profile (username, topics, etc.).
+router.get("/by-auth/:authId", async (req, res) => {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("auth_id", req.params.authId)
+    .maybeSingle();
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: "No profile for this auth user" });
+  res.json(data);
+});
+
 // GET /api/users/:username
 router.get("/:username", async (req, res) => {
   const user = await findUserOrRespond404(req.params.username, res);
   if (user) res.json(user);
 });
 
-// POST /api/users — create a new user (this is your "login": if the
-// username doesn't exist yet, the app creates it on the spot)
+// POST /api/users — create a new user profile.
+// Accepts { username, auth_id? }. auth_id links to Supabase auth.users.
 router.post("/", async (req, res) => {
-  const { username } = req.body;
+  const { username, auth_id } = req.body;
   if (!username) return res.status(400).json({ error: "username is required" });
 
   const { data: existing } = await supabase
@@ -59,9 +74,12 @@ router.post("/", async (req, res) => {
       .json({ error: `Username already exists: ${username}` });
   }
 
+  const insert = { username, preferred_sentiment: "POSITIVE" };
+  if (auth_id) insert.auth_id = auth_id;
+
   const { data, error } = await supabase
     .from("users")
-    .insert({ username, preferred_sentiment: "POSITIVE" })
+    .insert(insert)
     .select()
     .single();
 

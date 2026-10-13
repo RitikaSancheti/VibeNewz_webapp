@@ -18,6 +18,7 @@ import { useAuth } from "../context/AuthContext";
 import { useWellbeing, orderByMood } from "../context/WellbeingContext";
 import {
   NewsArticle,
+  getAllNews,
   getUserFeed,
   fetchLiveNews,
   getMutedKeywords,
@@ -35,10 +36,10 @@ import { Sans, Serif, Eyebrow } from "../components/Typography";
 import { colors, radius, shadows } from "../theme";
 import { greetingForNow } from "../utils/news";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 9;
 
 export function DashboardScreen({ navigation }: any) {
-  const { username, user } = useAuth();
+  const { username, user, isGuest } = useAuth();
   const { mood } = useWellbeing();
   const { width } = useWindowDimensions();
 
@@ -53,7 +54,7 @@ export function DashboardScreen({ navigation }: any) {
   const [, setClock] = useState(0); // re-renders the "Updated 2 min ago" label
   const [hasAutoFetched, setHasAutoFetched] = useState(false);
   const [category, setCategory] = useState("For you");
-  const [showAll, setShowAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [gridWidth, setGridWidth] = useState(0);
 
   const wide = width >= 1180;
@@ -66,17 +67,20 @@ export function DashboardScreen({ navigation }: any) {
 
   // ---- Data (same endpoints as before) ----
   const loadFeed = useCallback(async () => {
-    if (!username) return [] as NewsArticle[];
     try {
+      // Guests get the public feed; signed-in users get their personalised feed
       const [data, mutedRows] = await Promise.all([
-        getUserFeed(username),
-        getMutedKeywords(username).catch(() => []),
+        username ? getUserFeed(username) : getAllNews(),
+        username ? getMutedKeywords(username).catch(() => []) : Promise.resolve([]),
       ]);
-      setArticles(data);
+      const next = !username
+        ? balancePublicFeed(dedupeArticles(data))
+        : dedupeArticles(data);
+      setArticles(next);
       setMuted(mutedRows.map((m) => m.keyword));
       setError("");
       setLastUpdated(Date.now());
-      return data;
+      return next;
     } catch (e: any) {
       setError(
         `Couldn't load your feed. ${e?.message || "Check that the backend is running."}`,
@@ -89,7 +93,33 @@ export function DashboardScreen({ navigation }: any) {
   //  force = true  → Refresh button: skip the server's 30-minute cache
   //  quiet = true  → background refresh: no spinner, no error banner
   async function onRefresh(force = true, quiet = false) {
-    if (!username || refreshingRef.current) return;
+    if (refreshingRef.current) return;
+    // Guests reload the public feed. Live NewsData fetch needs a signed-in user.
+    if (isGuest || !username) {
+      refreshingRef.current = true;
+      const before = new Set(articlesRef.current.map((a) => a.id));
+      if (!quiet) {
+        setRefreshing(true);
+        setRefreshError("");
+        setRefreshNote("");
+      }
+      try {
+        const data = await loadFeed();
+        const added = data.filter((a) => !before.has(a.id)).length;
+        if (!quiet) {
+          setRefreshNote(
+            added > 0
+              ? `${added} new ${added === 1 ? "story" : "stories"} added.`
+              : "You're up to date. No new stories right now.",
+          );
+        }
+      } finally {
+        refreshingRef.current = false;
+        setRefreshing(false);
+        setLoading(false);
+      }
+      return;
+    }
     refreshingRef.current = true;
     const before = new Set(articlesRef.current.map((a) => a.id));
     let fetched = false;
@@ -213,24 +243,28 @@ export function DashboardScreen({ navigation }: any) {
     if (!categories.includes(category)) setCategory("For you");
   }, [categories, category]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [category]);
+
   const filtered =
     category === "For you"
       ? rest
       : rest.filter((a) => (a.category || "General") === category);
-  const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
+  const visible = filtered.slice(0, visibleCount);
+  const hasMore = visible.length < filtered.length;
+  const filteredLen = useRef(0);
+  filteredLen.current = filtered.length;
 
-  const columns = gridWidth > 860 ? 3 : gridWidth > 540 ? 2 : 1;
-  const gap = 20;
-  const cardWidth = gridWidth
-    ? (gridWidth - gap * (columns - 1)) / columns
-    : undefined;
+  const columns = gridWidth >= 1180 ? 4 : gridWidth >= 860 ? 3 : gridWidth >= 560 ? 2 : 1;
+  const spans = mosaicSpans(visible.length, columns);
 
   const openArticle = (id: number) =>
     navigation.navigate("ArticleDetail", { id });
 
   // ---- Pieces ----
   const today = new Date();
-  const name = user?.first_name || username || "friend";
+  const name = user?.first_name || username || (isGuest ? "explorer" : "friend");
   const greetingSize = width < 700 ? 48 : width < 1100 ? 64 : 80;
 
   const sideItem =
@@ -268,13 +302,17 @@ export function DashboardScreen({ navigation }: any) {
           </Serif>
         </View>
         <View style={styles.sectionActions}>
-          {updatedLabel && !refreshing ? (
-            <Sans style={styles.updated}>{updatedLabel}</Sans>
-          ) : null}
+          <View style={styles.statusSlot}>
+            <Sans style={styles.updated} numberOfLines={1}>
+              {refreshing
+                ? "Updating stories…"
+                : refreshError || refreshNote || updatedLabel || " "}
+            </Sans>
+          </View>
           <Pressable
             onPress={() => onRefresh(true)}
             disabled={refreshing}
-            style={styles.linkBtn}
+            style={styles.refreshBtn}
             accessibilityLabel="Refresh news"
           >
             {refreshing ? (
@@ -282,56 +320,15 @@ export function DashboardScreen({ navigation }: any) {
             ) : (
               <Feather name="refresh-cw" size={14} color={colors.primaryDark} />
             )}
-            <Sans style={styles.linkBtnText}>
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </Sans>
+            <Sans style={styles.linkBtnText}>Refresh</Sans>
           </Pressable>
-          {filtered.length > PAGE_SIZE ? (
-            <Pressable
-              onPress={() => setShowAll((s) => !s)}
-              style={styles.linkBtn}
-            >
-              <Sans style={styles.linkBtnText}>
-                {showAll ? "Show fewer" : "See all stories"}
-              </Sans>
-              <Feather
-                name={showAll ? "chevron-up" : "chevron-right"}
-                size={16}
-                color={colors.primaryDark}
-              />
-            </Pressable>
+          {filtered.length > 0 ? (
+            <Sans style={styles.updated}>
+              {visible.length} of {filtered.length}
+            </Sans>
           ) : null}
         </View>
       </View>
-
-      {refreshError && !refreshing ? (
-        <View style={styles.refreshError}>
-          <Feather name="alert-circle" size={15} color={colors.danger} />
-          <Sans style={styles.refreshErrorText}>
-            {refreshError} Showing your saved stories.
-          </Sans>
-          <Pressable
-            onPress={() => setRefreshError("")}
-            accessibilityLabel="Dismiss"
-          >
-            <Feather name="x" size={15} color={colors.textMuted} />
-          </Pressable>
-        </View>
-      ) : null}
-
-      {refreshNote && !refreshing ? (
-        <View style={styles.refreshNote}>
-          <Feather name="check-circle" size={15} color={colors.primaryDark} />
-          <Sans style={styles.refreshNoteText}>{refreshNote}</Sans>
-        </View>
-      ) : null}
-
-      {refreshing ? (
-        <Sans style={styles.note}>
-          Fetching the latest articles and scoring their sentiment. This can
-          take up to a minute when the AI model is busy.
-        </Sans>
-      ) : null}
 
       <View style={styles.chips}>
         {categories.map((c) => {
@@ -357,7 +354,15 @@ export function DashboardScreen({ navigation }: any) {
       </View>
 
       <View
-        style={styles.grid}
+        style={[
+          styles.grid,
+          {
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gap: 18,
+            width: "100%",
+          } as any,
+        ]}
         onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
       >
         {visible.length === 0 ? (
@@ -369,21 +374,42 @@ export function DashboardScreen({ navigation }: any) {
                 : `No ${category} stories yet. Tap Refresh to fetch the latest.`}
           </Sans>
         ) : (
-          visible.map((a) => (
-            <ArticleCard
-              key={a.id}
-              article={a}
-              width={cardWidth}
-              onPress={() => openArticle(a.id)}
-            />
-          ))
+          visible.map((a, i) => {
+            const span = spans[i] || 1;
+            const wide = span > 1 && span / columns >= 0.45;
+            return (
+              <View
+                key={a.id}
+                style={{ gridColumn: `span ${span}`, minWidth: 0 } as any}
+              >
+                <ArticleCard
+                  article={a}
+                  wide={wide}
+                  onPress={() => openArticle(a.id)}
+                />
+              </View>
+            );
+          })
         )}
       </View>
+      {hasMore ? (
+        <Sans style={styles.empty}>Scroll to load more stories</Sans>
+      ) : null}
     </View>
   );
 
   return (
-    <PageShell>
+    <PageShell
+      fill
+      onScroll={(offsetY, layoutHeight, contentHeight) => {
+        if (visibleCount >= filteredLen.current) return;
+        if (offsetY + layoutHeight > contentHeight - 640) {
+          setVisibleCount((n) =>
+            Math.min(filteredLen.current, n + PAGE_SIZE),
+          );
+        }
+      }}
+    >
       {/* Greeting */}
       <View style={styles.greetingRow}>
         <View style={{ flexShrink: 1 }}>
@@ -701,7 +727,15 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 14, fontWeight: "600", color: colors.text },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  grid: { width: "100%" },
+  statusSlot: { width: 220, minHeight: 18, justifyContent: "center" },
+  refreshBtn: {
+    width: 108,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
   empty: { color: colors.textMuted, paddingVertical: 30 },
   errorBox: {
     backgroundColor: colors.surface,
@@ -727,4 +761,79 @@ function timeAgo(ts: number) {
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins} min ago`;
   return `${Math.floor(mins / 60)} h ago`;
+}
+
+function mosaicSpans(count: number, columns: number): number[] {
+  const rows =
+    columns >= 4
+      ? [
+          [2, 1, 1],
+          [1, 1, 1, 1],
+          [1, 2, 1],
+          [2, 2],
+          [1, 1, 2],
+          [1, 3],
+          [3, 1],
+          [1, 1, 1, 1],
+        ]
+      : columns === 3
+        ? [
+            [2, 1],
+            [1, 1, 1],
+            [1, 2],
+            [1, 1, 1],
+            [2, 1],
+            [1, 2],
+          ]
+        : columns === 2
+          ? [
+              [1, 1],
+              [1, 1],
+              [2],
+              [1, 1],
+              [1, 1],
+            ]
+          : [[1]];
+
+  const spans: number[] = [];
+  let row = 0;
+  while (spans.length < count) {
+    for (const span of rows[row % rows.length]) {
+      if (spans.length >= count) break;
+      spans.push(Math.min(span, columns));
+    }
+    row += 1;
+  }
+  return spans;
+}
+
+function dedupeArticles(articles: NewsArticle[]): NewsArticle[] {
+  const seen = new Set<string>();
+  const out: NewsArticle[] = [];
+  for (const article of articles) {
+    const key = (article.title || article.article_id || String(article.id))
+      .trim()
+      .toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(article);
+  }
+  return out;
+}
+
+// Same mix the signed-in feed uses: mostly uplifting, a little of the rest.
+function balancePublicFeed(articles: NewsArticle[]): NewsArticle[] {
+  const positive = articles.filter((a) => a.sentiment === "POSITIVE");
+  const neutral = articles.filter((a) => a.sentiment === "NEUTRAL");
+  const negative = articles.filter((a) => a.sentiment === "NEGATIVE");
+  const neutralCap = Math.max(3, Math.round(positive.length * 0.3));
+  const negativeCap = Math.max(1, Math.round(positive.length * 0.15));
+  const byNewest = (a: NewsArticle, b: NewsArticle) =>
+    new Date(b.published_at || 0).getTime() -
+    new Date(a.published_at || 0).getTime();
+  return [
+    ...positive,
+    ...neutral.slice(0, neutralCap),
+    ...negative.slice(0, negativeCap),
+  ].sort(byNewest);
 }

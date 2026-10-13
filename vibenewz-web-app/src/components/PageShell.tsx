@@ -11,21 +11,43 @@ import { TopNav } from "./TopNav";
 import { Sans, Serif, Eyebrow } from "./Typography";
 import { colors, shadows, NAV_HEIGHT, CONTENT_MAX_WIDTH } from "../theme";
 
-export function PageShell({ children }: { children: ReactNode }) {
+export function PageShell({
+  children,
+  onScroll,
+  fill,
+}: {
+  children: ReactNode;
+  onScroll?: (offsetY: number, layoutHeight: number, contentHeight: number) => void;
+  fill?: boolean;
+}) {
   const { width } = useWindowDimensions();
-  const gutter = width < 700 ? 16 : width < 1100 ? 32 : 56;
+  const gutter = width < 700 ? 16 : width < 1100 ? 28 : 40;
 
   return (
     <View style={styles.page}>
       <ScrollView
         style={{ flex: 1 }}
+        scrollEventThrottle={200}
+        onScroll={
+          onScroll
+            ? (e) => {
+                const { contentOffset, layoutMeasurement, contentSize } =
+                  e.nativeEvent;
+                onScroll(
+                  contentOffset.y,
+                  layoutMeasurement.height,
+                  contentSize.height,
+                );
+              }
+            : undefined
+        }
         contentContainerStyle={{
           paddingTop: NAV_HEIGHT + 34,
           paddingBottom: 96,
           paddingHorizontal: gutter,
         }}
       >
-        <View style={styles.column}>{children}</View>
+        <View style={[styles.column, fill && styles.columnFill]}>{children}</View>
       </ScrollView>
       <TopNav />
       <HelpButton />
@@ -129,6 +151,7 @@ function HelpButton() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   column: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
+  columnFill: { maxWidth: "100%" as any },
   header: {
     flexDirection: "row",
     flexWrap: "wrap",

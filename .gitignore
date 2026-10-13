@@ -3,3 +3,10 @@ node_modules/
 __pycache__/
 .venv/
 .DS_Store
+
+# local editor and debug
+.cursor/
+*.log
+
+# Expo local state
+.expo/

@@ -12,10 +12,11 @@ import { readMinutes, titleCase } from "../utils/news";
 interface Props {
   article: NewsArticle;
   onPress: () => void;
-  width?: number;
+  width?: number | string;
+  wide?: boolean;
 }
 
-export function ArticleCard({ article, onPress, width }: Props) {
+export function ArticleCard({ article, onPress, width, wide }: Props) {
   const { isBookmarked, toggleBookmark } = useBookmarks();
   const { isLiked, toggleLike } = useWellbeing();
   const saved = isBookmarked(article.id);
@@ -26,14 +27,15 @@ export function ArticleCard({ article, onPress, width }: Props) {
       onPress={onPress}
       style={({ hovered }: any) => [
         styles.card,
-        width ? { width } : null,
+        wide && styles.cardWide,
+        width != null ? { width } : null,
         hovered && styles.cardHover,
       ]}
     >
       <StoryImage
         uri={article.image_url}
         seed={article.category || article.title}
-        style={styles.image}
+        style={wide ? styles.imageWide : styles.image}
       >
         <Pressable
           accessibilityLabel={saved ? "Remove bookmark" : "Bookmark story"}
@@ -59,7 +61,7 @@ export function ArticleCard({ article, onPress, width }: Props) {
           </Sans>
         </View>
 
-        <Serif style={styles.title} numberOfLines={3}>
+        <Serif style={[styles.title, wide && styles.titleWide]} numberOfLines={3}>
           {article.title}
         </Serif>
         <Sans style={styles.description} numberOfLines={3}>
@@ -100,14 +102,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "hidden",
+    height: 420,
+    boxSizing: "border-box",
     transitionDuration: "200ms",
-    transitionProperty: "transform, box-shadow",
+    transitionProperty: "box-shadow",
   } as any,
   cardHover: {
-    transform: [{ translateY: -3 }],
     boxShadow: "0 16px 36px rgba(125, 105, 40, 0.12)",
   } as any,
-  image: { height: 185, width: "100%" },
+  cardWide: { flexDirection: "row", height: 268 },
+  image: { height: 168, width: "100%" },
+  imageWide: { width: "42%", height: "100%", minHeight: 0 },
+  titleWide: { fontSize: 28, lineHeight: 32 },
   bookmarkBtn: {
     position: "absolute",
     top: 12,
