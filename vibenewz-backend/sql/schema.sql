@@ -56,3 +56,8 @@ create index if not exists idx_muted_user on muted_keywords(user_id);
 
 alter table news add column if not exists image_url text;
 alter table news add column if not exists country text;
+
+-- Supabase Auth integration: link each app user to a Supabase auth.users row.
+-- Run this in the Supabase SQL editor after enabling Auth on your project.
+alter table public.users
+  add column if not exists auth_id uuid unique references auth.users(id) on delete cascade;

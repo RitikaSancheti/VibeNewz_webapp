@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
+// ponytail: guest shares the same screen stack as signed-in users; screens
+// that need a real user (bookmarks, prefs) show an inline sign-up prompt.
 import { colors } from "../theme";
 import { LoginScreen } from "../screens/LoginScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
@@ -35,7 +37,7 @@ const linking: LinkingOptions<any> = {
 };
 
 export function RootNavigator() {
-  const { username, isLoading } = useAuth();
+  const { username, isGuest, isLoading } = useAuth();
 
   // Stop any audio when signing out
   useEffect(() => {
@@ -72,7 +74,7 @@ export function RootNavigator() {
           contentStyle: { backgroundColor: colors.background },
         }}
       >
-        {username ? (
+        {username || isGuest ? (
           <>
             <Stack.Screen
               name="Home"
