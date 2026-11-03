@@ -10,7 +10,7 @@
 // backend, "localhost" just works — the browser and the server are on
 // the same machine. (If you ever deploy this online instead of running
 // it locally, you'd change this to your deployed backend's real URL.)
-const API_BASE_URL = `${process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000"}/api`;
+export const API_BASE_URL = `${process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000"}/api`;
 
 // ---- Types -------------------------------------------------
 

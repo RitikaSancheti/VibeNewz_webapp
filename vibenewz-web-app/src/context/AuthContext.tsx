@@ -20,7 +20,8 @@ import {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
-import { API_ORIGIN, AppUser } from "../api";
+import { AppUser } from "../api";
+import { API_BASE_URL } from "../api";
 
 const GUEST_KEY = "vibenewz_is_guest";
 
@@ -60,7 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // No auth session — check if user previously chose guest mode
         AsyncStorage.getItem(GUEST_KEY)
-          .then((val) => { if (val === "1") setIsGuest(true); })
+          .then((val) => {
+            if (val === "1") setIsGuest(true);
+          })
           .finally(() => setIsLoading(false));
       }
     });
@@ -94,9 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadUserByAuthId(authId: string) {
     try {
-      const res = await fetch(
-        `${API_ORIGIN}/api/users/by-auth/${authId}`
-      );
+      const res = await fetch(`${API_BASE_URL}/users/by-auth/${authId}`);
       if (res.ok) {
         const data: AppUser = await res.json();
         setUsername(data.username);
