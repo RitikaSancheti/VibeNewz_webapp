@@ -29,7 +29,9 @@ app.use("/api/users", userRoutes);
 
 // Catch-all for routes that don't exist
 app.use((req, res) => {
-  res.status(404).json({ error: `No route for ${req.method} ${req.originalUrl}` });
+  res
+    .status(404)
+    .json({ error: `No route for ${req.method} ${req.originalUrl}` });
 });
 
 // Catch-all for unexpected errors, so the server logs them instead of
@@ -39,6 +41,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong on the server." });
 });
 
-app.listen(PORT, () => {
-  console.log(`VibeNewz backend running at http://localhost:${PORT}`);
-});
+// Locally: start the server. On Vercel: just export the app.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`VibeNewz backend running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
