@@ -6,11 +6,11 @@
 // to the new Node backend instead of Spring Boot.
 // ============================================================
 
-// Local default. Set EXPO_PUBLIC_API_BASE_URL on Vercel to the deployed API origin.
-export const API_ORIGIN = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000"
-).replace(/\/$/, "");
-const API_BASE_URL = `${API_ORIGIN}/api`;
+// Since this runs as a web app in your browser, on the same Mac as your
+// backend, "localhost" just works — the browser and the server are on
+// the same machine. (If you ever deploy this online instead of running
+// it locally, you'd change this to your deployed backend's real URL.)
+const API_BASE_URL = `${process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000"}/api`;
 
 // ---- Types -------------------------------------------------
 
@@ -184,7 +184,10 @@ export async function getUser(username: string): Promise<AppUser | null> {
   }
 }
 
-export function createUser(username: string, authId?: string): Promise<AppUser> {
+export function createUser(
+  username: string,
+  authId?: string,
+): Promise<AppUser> {
   return request("/users", {
     method: "POST",
     body: JSON.stringify({ username, auth_id: authId }),
